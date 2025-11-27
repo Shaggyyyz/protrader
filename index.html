@@ -11,33 +11,73 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Inter Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #000; color: #e5e7eb; }
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .fade-in { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #050505; 
+            color: #e5e7eb; 
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
         
-        /* Custom Scrollbar for tables */
+        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #0e0e0e; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* Animations */
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .spin-slow { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     </style>
 </head>
-<body>
+<body class="min-h-screen flex flex-col">
 
-    <!-- APP CONTAINER -->
-    <div id="root" class="min-h-screen flex flex-col">
-        <!-- Content injected by JS -->
-    </div>
+    <!-- HEADER -->
+    <header class="h-16 border-b border-gray-800 flex items-center justify-between px-4 md:px-8 bg-black/80 backdrop-blur-md sticky top-0 z-50">
+        <div class="flex items-center gap-8">
+            <div class="flex items-center gap-2 cursor-pointer" onclick="app.setView('dashboard')">
+                <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-xs text-white shadow-lg shadow-blue-900/20">PT</div>
+                <span class="font-bold text-xl tracking-tight text-white">PRO<span class="text-blue-500">TRADER</span></span>
+            </div>
+            <nav class="hidden md:flex gap-1 bg-gray-900/50 p-1 rounded-lg border border-gray-800">
+                <button id="nav-dashboard" onclick="app.setView('dashboard')" class="px-4 py-1.5 rounded text-xs font-bold transition-all text-white bg-gray-800">SCANNER</button>
+                <button id="nav-portfolio" onclick="app.setView('portfolio')" class="px-4 py-1.5 rounded text-xs font-bold transition-all text-gray-500 hover:text-white">PORTFOLIO</button>
+            </nav>
+        </div>
+        
+        <div class="flex items-center gap-4">
+             <div class="hidden md:block text-right">
+                <div class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Last Update</div>
+                <div id="last-updated" class="text-xs font-mono font-bold text-white">--:--:--</div>
+             </div>
+             <div class="flex flex-col items-end">
+                 <button id="refresh-btn" onclick="app.handleRefresh()" class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-all shadow-lg shadow-blue-900/20 active:scale-95">
+                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> 
+                    <span id="refresh-text">REFRESH DATA</span>
+                 </button>
+                 <div class="text-[9px] mt-1 text-gray-600 flex items-center gap-1 font-mono">
+                    API: <span id="api-status" class="text-orange-500">OFFLINE (CACHED)</span>
+                 </div>
+             </div>
+        </div>
+    </header>
 
+    <!-- MAIN CONTENT -->
+    <main id="root" class="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
+        <!-- Dynamic Content Injected Here -->
+    </main>
+
+    <!-- JAVASCRIPT LOGIC -->
     <script>
         // --- CONFIGURATION ---
-        const MARKETSTACK_KEY = '29f6e55e359cea3c32dfb279a4901516';
-        const MARKETSTACK_BASE_URL = 'http://api.marketstack.com/v2';
+        const MARKETSTACK_KEY = '29f6e55e359cea3c32dfb279a4901516'; 
+        const MARKETSTACK_BASE_URL = 'http://api.marketstack.com/v2'; // Free tier is HTTP
 
         const BASE_POOL = [
             { symbol: 'SPY', name: 'S&P 500 ETF', type: 'index', price: 679.68, ath: 689.70, volatility: 0.012, marketCap: 613, alwaysShow: true }, 
@@ -91,48 +131,32 @@
             { symbol: 'LIN', name: 'Linde', type: 'stock', price: 460.00, ath: 480.00, volatility: 0.012, marketCap: 220 }
         ];
 
-        // --- STATE MANAGEMENT ---
-        const state = {
+        // --- APP STATE ---
+        let state = {
             allAssets: [],
             vix: 17.19,
             fearGreed: { value: 18, status: 'Extreme Fear' },
             selectedAsset: null,
-            view: 'dashboard', // dashboard, detail, portfolio
+            view: 'dashboard',
             isRefreshing: false,
             lastUpdated: new Date(),
             sortConfig: { key: null, direction: 'asc' },
             strategy: 'hybrid',
-            apiStatus: 'offline (cached)',
+            apiStatus: 'OFFLINE (CACHED)',
             portfolio: JSON.parse(localStorage.getItem('proTraderPortfolio')) || []
         };
 
         // --- UTILS ---
         const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(val);
         const formatMarketCap = (val) => val >= 1000 ? `$${(val / 1000).toFixed(2)} T` : `$${val.toFixed(2)} B`;
-        const formatDate = (daysAgo = 0) => {
+        const formatDate = (daysAgo) => {
             const date = new Date();
             date.setDate(date.getDate() - daysAgo);
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         };
 
-        // --- CALCULATIONS ---
-        const calculateRSI = (candles, period = 14) => {
-            if (candles.length < period + 1) return 50;
-            let gains = 0, losses = 0;
-            // Iterate backwards for calculation logic consistency
-            for (let i = period; i > 0; i--) {
-                const currentClose = candles[i-1].close;
-                const prevClose = candles[i].close;
-                const change = currentClose - prevClose;
-                if (change >= 0) gains += change; else losses += Math.abs(change);
-            }
-            let avgGain = gains / period;
-            let avgLoss = losses / period;
-            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-            return 100 - (100 / (1 + rs));
-        };
-
-        const generateHistoryFromPrice = (currentPrice, volatility, days = 90) => {
+        // --- CHART DATA GENERATOR ---
+        function generateHistoryFromPrice(currentPrice, volatility, days = 90) {
             let candles = [];
             let price = currentPrice;
             for (let i = 0; i < days; i++) {
@@ -148,33 +172,55 @@
                 price = open; 
             }
             return candles.reverse();
-        };
+        }
 
-        const calculateRiskReward = (asset, currentVix) => {
+        // --- INDICATORS ---
+        function calculateRSI(candles, period = 14) {
+            if (!candles || candles.length < period + 1) return 50;
+            let gains = 0, losses = 0;
+            const len = candles.length;
+            for (let i = 0; i < period; i++) {
+                const current = candles[len - 1 - i];
+                const prev = candles[len - 2 - i];
+                if(!current || !prev) continue;
+                const change = current.close - prev.close;
+                if (change >= 0) gains += change; else losses += Math.abs(change);
+            }
+            let avgGain = gains / period;
+            let avgLoss = losses / period;
+            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+            return 100 - (100 / (1 + rs));
+        }
+
+        function calculateRiskReward(asset, currentVix) {
             const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
-            const rsi = calculateRSI(asset.candles || []);
+            const rsi = calculateRSI(asset.candles);
             let score = 50;
             let signal = 'HOLD';
             let color = 'text-gray-400';
             let bg = 'bg-gray-800';
 
-            if (pctDown >= 5) score += 5;
-            if (pctDown >= 10) score += 10;
-            if (pctDown >= 20) score += 15;
-            if (pctDown >= 30) score += 20;
-            if (pctDown >= 50) score += 30;
+            if (pctDown >= 5 && pctDown < 10) score += 5;
+            if (pctDown >= 10 && pctDown < 15) score += 10;
+            if (pctDown >= 15 && pctDown < 20) score += 15;
+            if (pctDown >= 20 && pctDown < 25) score += 25;
+            if (pctDown >= 25 && pctDown < 30) score += 35;
+            if (pctDown >= 30 && pctDown < 35) score += 45;
+            if (pctDown >= 35 && pctDown < 40) score += 55;
+            if (pctDown >= 40 && pctDown < 45) score += 65;
+            if (pctDown >= 50) score += 80; 
 
             if (rsi < 30) score += 20;     
             if (rsi < 40) score += 10;
             if (currentVix > 20) score += 10;
 
-            if (score >= 85) { signal = 'STRONG BUY'; color = 'text-green-400'; bg = 'bg-green-900/40'; }
-            else if (score >= 70) { signal = 'ACCUMULATE'; color = 'text-green-300'; bg = 'bg-green-900/20'; }
-            else if (score <= 30) { signal = 'WAIT'; color = 'text-yellow-500'; bg = 'bg-yellow-900/20'; } 
-            else if (score >= 60) { signal = 'WATCH'; color = 'text-blue-400'; bg = 'bg-blue-900/20'; }
+            if (score >= 85) { signal = 'STRONG BUY'; color = 'text-green-400'; bg = 'bg-green-900/40 border-green-500'; }
+            else if (score >= 70) { signal = 'ACCUMULATE'; color = 'text-green-300'; bg = 'bg-green-900/20 border-green-800'; }
+            else if (score <= 30) { signal = 'WAIT'; color = 'text-yellow-500'; bg = 'bg-yellow-900/20 border-yellow-700'; } 
+            else if (score >= 60) { signal = 'WATCH'; color = 'text-blue-400'; bg = 'bg-blue-900/20 border-blue-800'; }
             
             return { signal, color, bg, score, rsi };
-        };
+        }
 
         // --- INITIALIZATION ---
         const init = () => {
@@ -188,103 +234,11 @@
 
         // --- CORE FUNCTIONS ---
         
-        async function fetchData() {
-            updateState({ isRefreshing: true, apiStatus: 'fetching...' });
-            
-            try {
-                // 1. BTC
-                const btcRes = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin');
-                const btcData = await btcRes.json();
-                const realBtc = btcData[0] ? { price: btcData[0].current_price, ath: btcData[0].ath, marketCap: btcData[0].market_cap/1e9 } : null;
-
-                // 2. Stocks Batch
-                const symbols = BASE_POOL.filter(a => a.type === 'stock').map(a => a.symbol).join(',');
-                let marketstackData = [];
-                let tickersData = [];
-                
-                try {
-                    const [eodRes, tickerRes] = await Promise.all([
-                        fetch(`${MARKETSTACK_BASE_URL}/eod?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`),
-                        fetch(`${MARKETSTACK_BASE_URL}/tickers?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`)
-                    ]);
-                    
-                    if (eodRes.ok) {
-                        const eodJson = await eodRes.json();
-                        marketstackData = eodJson.data || [];
-                        state.apiStatus = 'online (v2)';
-                    } else {
-                        state.apiStatus = 'offline (api error)';
-                    }
-                    
-                    if (tickerRes.ok) {
-                        const tickerJson = await tickerRes.json();
-                        tickersData = tickerJson.data || [];
-                    }
-                } catch(e) {
-                    console.warn("Marketstack error:", e);
-                    state.apiStatus = 'offline (mixed content)';
-                }
-
-                // 3. Update State
-                const newAssets = state.allAssets.map(asset => {
-                    let freshPrice = asset.price;
-                    let freshMC = asset.marketCap;
-                    let freshName = asset.name;
-                    let freshATH = asset.ath;
-
-                    // BTC Update
-                    if(asset.symbol === 'BTC' && realBtc) {
-                        freshPrice = realBtc.price;
-                        freshMC = realBtc.marketCap;
-                        freshATH = realBtc.ath;
-                    }
-
-                    // Stock Update
-                    const apiStock = marketstackData.find(i => i.symbol === asset.symbol);
-                    if (apiStock) {
-                        freshPrice = apiStock.close;
-                        // Est market cap
-                        const baseAsset = BASE_POOL.find(b => b.symbol === asset.symbol);
-                        if(baseAsset) {
-                            freshMC = baseAsset.marketCap * (freshPrice / baseAsset.price);
-                        }
-                        if(freshPrice > freshATH) freshATH = freshPrice;
-                    }
-                    
-                    const apiTicker = tickersData.find(i => i.symbol === asset.symbol);
-                    if(apiTicker) freshName = apiTicker.name;
-
-                    // Update Chart
-                    let newCandles = asset.candles;
-                    if(freshPrice !== asset.price) {
-                         newCandles = [...asset.candles];
-                         const last = newCandles[newCandles.length - 1];
-                         newCandles[newCandles.length - 1] = {
-                             ...last,
-                             close: freshPrice,
-                             high: Math.max(last.high, freshPrice),
-                             low: Math.min(last.low, freshPrice)
-                         };
-                    }
-
-                    return { 
-                        ...asset, 
-                        price: freshPrice, 
-                        marketCap: freshMC, 
-                        name: freshName,
-                        ath: freshATH,
-                        candles: newCandles 
-                    };
-                });
-
-                updateState({ allAssets: newAssets, lastUpdated: new Date(), isRefreshing: false });
-
-            } catch (err) {
-                console.error(err);
-                updateState({ isRefreshing: false, apiStatus: 'error' });
-            }
+        function updateState(newState) {
+            Object.assign(state, newState);
+            render();
         }
-
+        
         function getSortedAssets() {
             const indices = state.allAssets.filter(a => a.alwaysShow);
             const stocks = state.allAssets.filter(a => !a.alwaysShow && a.type === 'stock');
@@ -305,7 +259,6 @@
 
             let combined = [...indices, ...ranked.slice(0, 15)];
 
-            // Column Sorting
             if (state.sortConfig.key) {
                 combined.sort((a, b) => {
                     let aVal, bVal;
@@ -325,14 +278,91 @@
             return combined;
         }
 
-        function updateState(newState) {
-            Object.assign(state, newState);
-            render();
+        async function fetchData() {
+            updateState({ isRefreshing: true, apiStatus: 'FETCHING...' });
+            
+            try {
+                const btcRes = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin');
+                const btcData = await btcRes.json();
+                const realBtc = btcData[0] ? { price: btcData[0].current_price, ath: btcData[0].ath, marketCap: btcData[0].market_cap/1e9 } : null;
+
+                const symbols = BASE_POOL.filter(a => a.type === 'stock').map(a => a.symbol).join(',');
+                let marketstackData = [];
+                let tickersData = [];
+                
+                try {
+                    const [eodRes, tickerRes] = await Promise.all([
+                        fetch(`${MARKETSTACK_BASE_URL}/eod?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`),
+                        fetch(`${MARKETSTACK_BASE_URL}/tickers?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`)
+                    ]);
+                    
+                    if (eodRes.ok) {
+                        const eodJson = await eodRes.json();
+                        marketstackData = eodJson.data || [];
+                        state.apiStatus = 'ONLINE (V2)';
+                    } else {
+                        state.apiStatus = 'OFFLINE (API ERROR)';
+                    }
+                    
+                    if (tickerRes.ok) {
+                        const tickerJson = await tickerRes.json();
+                        tickersData = tickerJson.data || [];
+                    }
+                } catch(e) {
+                    console.warn("Marketstack error:", e);
+                    state.apiStatus = 'OFFLINE (MIXED CONTENT)';
+                }
+
+                const newAssets = state.allAssets.map(asset => {
+                    let freshPrice = asset.price;
+                    let freshMC = asset.marketCap;
+                    let freshName = asset.name;
+                    let freshATH = asset.ath;
+
+                    if(asset.symbol === 'BTC' && realBtc) {
+                        freshPrice = realBtc.price;
+                        freshMC = realBtc.marketCap;
+                        freshATH = realBtc.ath;
+                    }
+
+                    const apiStock = marketstackData.find(i => i.symbol === asset.symbol);
+                    if (apiStock) {
+                        freshPrice = apiStock.close;
+                        const baseAsset = BASE_POOL.find(b => b.symbol === asset.symbol);
+                        if(baseAsset) {
+                            freshMC = baseAsset.marketCap * (freshPrice / baseAsset.price);
+                        }
+                        if(freshPrice > freshATH) freshATH = freshPrice;
+                    }
+                    
+                    const apiTicker = tickersData.find(i => i.symbol === asset.symbol);
+                    if(apiTicker) freshName = apiTicker.name;
+
+                    let newCandles = asset.candles;
+                    if(freshPrice !== asset.price) {
+                         newCandles = [...asset.candles];
+                         const last = newCandles[newCandles.length - 1];
+                         newCandles[newCandles.length - 1] = {
+                             ...last,
+                             close: freshPrice,
+                             high: Math.max(last.high, freshPrice),
+                             low: Math.min(last.low, freshPrice)
+                         };
+                    }
+
+                    return { ...asset, price: freshPrice, marketCap: freshMC, name: freshName, ath: freshATH, candles: newCandles };
+                });
+
+                updateState({ allAssets: newAssets, lastUpdated: new Date(), isRefreshing: false });
+
+            } catch (err) {
+                console.error(err);
+                updateState({ isRefreshing: false, apiStatus: 'ERROR' });
+            }
         }
 
-        // --- RENDERING ---
+        // --- RENDERERS ---
 
-        // SVG Charts in HTML
         function renderCandleChartSVG(data, width) {
             if(!data || data.length === 0) return '';
             const height = 300, padding = 20;
@@ -355,7 +385,6 @@
                 let bodyH = Math.abs(getY(c.close) - getY(c.open));
                 if(bodyH < 1) bodyH = 1;
                 const bodyY = Math.min(getY(c.open), getY(c.close));
-                
                 paths += `<line x1="${wickX}" y1="${getY(c.high)}" x2="${wickX}" y2="${getY(c.low)}" stroke="${color}" stroke-width="1"></line>`;
                 paths += `<rect x="${x}" y="${bodyY}" width="${barWidth}" height="${bodyH}" fill="${color}"></rect>`;
             });
@@ -369,139 +398,108 @@
             `;
         }
 
-        function renderMiniChart(data, color) {
-             const width = 80, height = 30;
-             const prices = data.map(c => c.close);
-             const min = Math.min(...prices);
-             const max = Math.max(...prices);
-             const range = max - min || 1;
-             const points = prices.slice(-15).map((p, i) => {
-                 const x = (i / 14) * width;
-                 const y = height - ((p - min) / range) * height;
-                 return `${x},${y}`;
-             }).join(' ');
-             return `<svg width="${width}" height="${height}" class="overflow-visible"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>`;
-        }
-
         function renderDashboard() {
             const assets = getSortedAssets();
-            
-            let html = `
-            <div class="space-y-6 animate-in fade-in">
-                <div class="flex justify-between items-end">
-                    <div>
-                        <h2 class="text-2xl font-bold text-white mb-1">Daily Scanner</h2>
-                        <p class="text-gray-500 text-sm">Scanning 50+ stocks. Showing Top 15 based on ${state.strategy}.</p>
-                    </div>
-                    <div class="text-xs font-mono text-gray-500 flex items-center gap-2"><i data-lucide="clock" class="w-3 h-3"></i> DATA: ${state.lastUpdated.toLocaleTimeString()}</div>
-                </div>
-                
-                ${renderMarketPulse()}
-                ${renderStrategySelector()}
+            const rows = assets.map(asset => {
+                const analysis = calculateRiskReward(asset, state.vix);
+                const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
+                const isGreen = asset.price >= asset.candles[asset.candles.length-2].close;
+                return `
+                <tr class="border-b border-gray-800 hover:bg-[#111] cursor-pointer transition-colors" onclick="app.selectAsset('${asset.symbol}')">
+                    <td class="p-4 font-bold text-white flex items-center gap-3">
+                        <div class="w-1 h-8 ${analysis.color.replace('text-', 'bg-')} rounded-full"></div>
+                        <div><div class="text-base font-bold text-gray-100">${asset.symbol}</div><div class="text-[10px] text-gray-500 font-normal uppercase tracking-wider">${asset.name}</div></div>
+                    </td>
+                    <td class="p-4 text-right font-mono text-base ${isGreen ? 'text-green-400' : 'text-red-400'}">${formatCurrency(asset.price)}</td>
+                    <td class="p-4 text-right text-gray-400 font-mono text-sm hidden sm:table-cell">${formatMarketCap(asset.marketCap)}</td>
+                    <td class="p-4 text-right font-bold text-white hidden md:table-cell"><span class="text-xs px-2 py-1 rounded border ${pctDown > 10 ? 'border-red-900 bg-red-900/20 text-red-400' : 'border-gray-700 bg-gray-800'}">-${pctDown.toFixed(2)}%</span></td>
+                    <td class="p-4 text-center font-mono text-sm"><span class="${analysis.rsi < 30 ? 'text-green-400 font-bold' : analysis.rsi > 70 ? 'text-red-400 font-bold' : 'text-gray-500'}">${analysis.rsi.toFixed(0)}</span></td>
+                    <td class="p-4 text-center"><span class="text-[10px] font-bold px-3 py-1 rounded-full border ${analysis.color} ${analysis.bg}">${analysis.signal}</span></td>
+                </tr>`;
+            }).join('');
 
-                <div class="bg-[#0e0e0e] border border-gray-800 rounded-lg overflow-hidden shadow-2xl overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="text-gray-500 text-xs uppercase border-b border-gray-800">
-                                <th class="p-4 cursor-pointer hover:text-white" onclick="setSort('symbol')">Asset</th>
-                                <th class="p-4 text-right cursor-pointer hover:text-white" onclick="setSort('price')">Price</th>
-                                <th class="p-4 text-right hidden sm:table-cell cursor-pointer hover:text-white" onclick="setSort('marketCap')">Mkt Cap</th>
-                                <th class="p-4 text-right hidden md:table-cell cursor-pointer hover:text-white" onclick="setSort('pctDown')">% Down</th>
-                                <th class="p-4 text-center cursor-pointer hover:text-white" onclick="setSort('rsi')">RSI (14)</th>
-                                <th class="p-4 text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${assets.map(asset => {
-                                const analysis = calculateRiskReward(asset, state.vix);
-                                const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
-                                const isGreen = asset.price >= asset.candles[asset.candles.length-2].close;
-                                return `
-                                <tr class="border-b border-gray-800 hover:bg-[#111] cursor-pointer transition-colors" onclick="selectAsset('${asset.symbol}')">
-                                    <td class="p-4 font-bold text-white flex items-center gap-3">
-                                        <div class="w-1 h-8 ${analysis.color.replace('text-', 'bg-')}"></div>
-                                        <div>
-                                            <div class="text-base">${asset.symbol}</div>
-                                            <div class="text-[10px] text-gray-500 font-normal uppercase">${asset.name}</div>
-                                        </div>
-                                    </td>
-                                    <td class="p-4 text-right font-mono text-base ${isGreen ? 'text-green-400' : 'text-red-400'}">${formatCurrency(asset.price)}</td>
-                                    <td class="p-4 text-right text-gray-400 font-mono text-sm hidden sm:table-cell">${formatMarketCap(asset.marketCap)}</td>
-                                    <td class="p-4 text-right font-bold text-white hidden md:table-cell">
-                                        <span class="text-xs px-2 py-1 rounded border ${pctDown > 10 ? 'border-red-900 bg-red-900/20 text-red-400' : 'border-gray-700 bg-gray-800'}">-${pctDown.toFixed(2)}%</span>
-                                    </td>
-                                    <td class="p-4 text-center font-mono text-sm">
-                                        <span class="${analysis.rsi < 30 ? 'text-green-400 font-bold' : analysis.rsi > 70 ? 'text-red-400 font-bold' : 'text-gray-500'}">${analysis.rsi.toFixed(0)}</span>
-                                    </td>
-                                    <td class="p-4 text-center">
-                                        <span class="text-[10px] font-bold px-3 py-1 rounded-full ${analysis.color} ${analysis.bg}">${analysis.signal}</span>
-                                    </td>
-                                </tr>
-                                `;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                    ${renderAlgoLegend()}
+            return `
+                <div class="space-y-6 fade-in">
+                    ${renderMarketPulse()}
+                    ${renderStrategySelector()}
+                    <div class="bg-[#0e0e0e] border border-gray-800 rounded-xl overflow-hidden shadow-2xl">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="text-gray-500 text-xs uppercase border-b border-gray-800 bg-[#0a0a0a]">
+                                        <th class="p-4 cursor-pointer hover:text-white" onclick="app.setSort('symbol')">Asset</th>
+                                        <th class="p-4 text-right cursor-pointer hover:text-white" onclick="app.setSort('price')">Price</th>
+                                        <th class="p-4 text-right hidden sm:table-cell cursor-pointer hover:text-white" onclick="app.setSort('marketCap')">Mkt Cap</th>
+                                        <th class="p-4 text-right hidden md:table-cell cursor-pointer hover:text-white" onclick="app.setSort('pctDown')">% Down</th>
+                                        <th class="p-4 text-center cursor-pointer hover:text-white" onclick="app.setSort('rsi')">RSI (14)</th>
+                                        <th class="p-4 text-center">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
+                        ${renderAlgoLegend()}
+                    </div>
                 </div>
-            </div>`;
-            return html;
+            `;
         }
 
         function renderMarketPulse() {
-            const { value } = state.fearGreed;
-            let color = value < 25 ? 'text-red-500' : value < 45 ? 'text-orange-400' : value > 75 ? 'text-green-500' : 'text-green-300';
-            
+            const fg = state.fearGreed;
+            let fgColor = fg.value < 25 ? 'text-red-500' : fg.value < 45 ? 'text-orange-400' : fg.value > 75 ? 'text-green-500' : 'text-green-300';
             return `
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div class="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg">
-                    <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="gauge" class="w-4 h-4"></i> Fear & Greed</h3>
-                    <div class="text-2xl font-black mt-1 ${color}">${value} <span class="text-xs text-gray-400 font-medium">${state.fearGreed.status}</span></div>
+                <div class="bg-[#0e0e0e] border border-gray-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                     <div class="relative z-10">
+                         <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="gauge" class="w-4 h-4"></i> Fear & Greed</h3>
+                         <div class="text-3xl font-black mt-1 ${fgColor}">${fg.value}</div>
+                         <div class="text-xs text-gray-400 font-medium mt-1">${fg.status}</div>
+                     </div>
+                     <div class="absolute right-0 top-0 w-32 h-full bg-gradient-to-l from-gray-900 to-transparent pointer-events-none"></div>
                 </div>
-                <div class="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg">
-                    <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="activity" class="w-4 h-4"></i> VIX (Volatility)</h3>
-                    <div class="text-2xl font-black mt-1 ${state.vix > 20 ? 'text-red-500' : 'text-blue-400'}">${state.vix.toFixed(2)}</div>
-                    <div class="text-xs text-gray-500 mt-2">${state.vix > 20 ? "High Volatility" : "Stable Market"}</div>
+                <div class="bg-[#0e0e0e] border border-gray-800 p-5 rounded-xl">
+                    <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="activity" class="w-4 h-4"></i> VIX Index</h3>
+                    <div class="text-3xl font-black mt-1 ${state.vix > 20 ? 'text-red-500' : 'text-blue-400'}">${state.vix.toFixed(2)}</div>
+                    <div class="text-xs text-gray-500 mt-1">${state.vix > 20 ? "High Volatility Environment" : "Stable Market Conditions"}</div>
                 </div>
-                <div class="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg">
-                     <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4"></i> Insight</h3>
-                     <div class="text-sm font-medium text-white mt-1">Extreme Fear often signals a buying opportunity.</div>
+                <div class="bg-[#0e0e0e] border border-gray-800 p-5 rounded-xl">
+                    <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4 text-yellow-400"></i> Algo Insight</h3>
+                    <div class="text-sm text-gray-300 mt-2 leading-relaxed">Current market fear suggests a potential <strong>accumulation phase</strong> for high-quality assets.</div>
                 </div>
-            </div>
-            `;
+            </div>`;
         }
 
         function renderStrategySelector() {
-            const btns = [
-                { id: 'hybrid', label: 'Hybrid (Value)', icon: 'layers' },
-                { id: 'marketCap', label: 'Market Cap', icon: 'dollar-sign' },
-                { id: 'drawdown', label: 'Deep Value', icon: 'trending-down' },
-                { id: 'action', label: 'High Action', icon: 'activity' }
-            ];
-            return `
-            <div class="flex flex-wrap gap-2 mb-4 p-1 bg-[#0e0e0e] border border-gray-800 rounded-lg w-fit">
-                ${btns.map(b => `
-                    <button onclick="setStrategy('${b.id}')" class="px-3 py-1.5 text-xs font-bold rounded flex items-center gap-2 transition-colors ${state.strategy === b.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}">
-                        <i data-lucide="${b.icon}" class="w-3 h-3"></i> ${b.label}
+             const strategies = [
+                 { id: 'hybrid', label: 'Hybrid Value', icon: 'layers' },
+                 { id: 'marketCap', label: 'Market Cap', icon: 'dollar-sign' },
+                 { id: 'drawdown', label: 'Deep Value', icon: 'trending-down' },
+                 { id: 'action', label: 'High Action', icon: 'activity' }
+             ];
+             return `
+             <div class="flex flex-wrap gap-2 p-1 bg-[#0e0e0e] border border-gray-800 rounded-lg w-fit">
+                ${strategies.map(s => `
+                    <button onclick="app.setStrategy('${s.id}')" class="px-3 py-1.5 text-xs font-bold rounded flex items-center gap-2 transition-all ${state.strategy === s.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-gray-500 hover:text-white'}">
+                        <i data-lucide="${s.icon}" class="w-3 h-3"></i> ${s.label}
                     </button>
                 `).join('')}
-            </div>
-            `;
+             </div>`;
         }
 
         function renderAlgoLegend() {
             return `
-            <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs border-t border-gray-800">
-                 <div class="p-3 bg-green-900/10 border border-green-900/30 rounded">
-                    <div class="font-bold text-green-400">STRONG BUY</div>
-                    <div class="text-gray-500">Price > 20% below ATH + RSI < 30.</div>
+            <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs border-t border-gray-800 bg-[#0a0a0a]">
+                 <div class="flex items-start gap-3">
+                    <div class="w-2 h-2 mt-1 bg-green-500 rounded-full shadow-[0_0_8px_#22c55e]"></div>
+                    <div><div class="font-bold text-green-400">STRONG BUY / ACCUMULATE</div><div class="text-gray-500 leading-tight mt-1">Asset is >20% below ATH with Oversold RSI (<30).</div></div>
                  </div>
-                 <div class="p-3 bg-blue-900/10 border border-blue-900/30 rounded">
-                    <div class="font-bold text-blue-400">WATCH / HOLD</div>
-                    <div class="text-gray-500">Stable trend, good for accumulation.</div>
+                 <div class="flex items-start gap-3">
+                    <div class="w-2 h-2 mt-1 bg-blue-500 rounded-full"></div>
+                    <div><div class="font-bold text-blue-400">WATCH</div><div class="text-gray-500 leading-tight mt-1">Asset is showing stability or moderate value.</div></div>
                  </div>
-                 <div class="p-3 bg-yellow-900/10 border border-yellow-900/30 rounded">
-                    <div class="font-bold text-yellow-400">WAIT</div>
-                    <div class="text-gray-500">Price near highs. Wait for pullback.</div>
+                 <div class="flex items-start gap-3">
+                    <div class="w-2 h-2 mt-1 bg-yellow-500 rounded-full"></div>
+                    <div><div class="font-bold text-yellow-500">WAIT</div><div class="text-gray-500 leading-tight mt-1">Price is near All-Time Highs. Wait for a pullback.</div></div>
                  </div>
             </div>`;
         }
@@ -509,65 +507,53 @@
         function renderDetail() {
             const asset = state.allAssets.find(a => a.symbol === state.selectedAsset);
             if(!asset) return '';
-            
             const analysis = calculateRiskReward(asset, state.vix);
             const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
-            const prevClose = asset.candles[asset.candles.length-2].close;
-            
-            // Visual Bar for ATH
+            const chartHtml = renderCandleChartSVG(asset.candles, 800);
             const pct = Math.min(pctDown, 100);
-            const barColor = 'linear-gradient(90deg, #4b5563 0%, #ef4444 50%, #22c55e 100%)';
+            const gradient = 'linear-gradient(90deg, #4b5563 0%, #ef4444 50%, #22c55e 100%)';
 
             return `
-            <div class="animate-in fade-in p-6 max-w-7xl mx-auto">
-                <div class="flex items-center justify-between mb-6">
-                    <button onclick="updateState({view: 'dashboard', selectedAsset: null})" class="flex items-center gap-2 text-gray-400 hover:text-white text-sm font-bold uppercase"><i data-lucide="arrow-left" class="w-4 h-4"></i> Back</button>
-                    <div class="text-xs text-green-500 flex items-center gap-2"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> LIVE VIEW</div>
-                </div>
+            <div class="space-y-6 fade-in">
+                <button onclick="app.setView('dashboard'); app.selectAsset(null);" class="flex items-center gap-2 text-gray-400 hover:text-white text-sm font-bold uppercase tracking-widest">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Scanner
+                </button>
 
                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     <div class="lg:col-span-8 space-y-4">
-                         <div class="bg-[#0e0e0e] p-6 rounded-lg border border-gray-800 flex justify-between items-end">
+                         <div class="bg-[#0e0e0e] p-6 rounded-xl border border-gray-800 flex justify-between items-end">
                             <div>
-                                <h1 class="text-3xl font-bold text-white flex items-center gap-3">${asset.symbol} <span class="text-sm font-normal text-gray-500 border border-gray-700 px-2 rounded bg-black">${asset.type}</span></h1>
+                                <h1 class="text-4xl font-bold text-white flex items-center gap-3">${asset.symbol} <span class="text-sm font-normal text-gray-500 border border-gray-700 px-2 py-0.5 rounded bg-black">${asset.type}</span></h1>
                                 <p class="text-gray-400 text-sm mt-1">${asset.name}</p>
                             </div>
                             <div class="text-right">
-                                <div class="text-4xl font-mono font-bold ${asset.price >= prevClose ? 'text-green-500' : 'text-red-500'}">${formatCurrency(asset.price)}</div>
+                                <div class="text-xs text-gray-500 uppercase font-bold mb-1">Current Price</div>
+                                <div class="text-5xl font-mono font-bold text-white tracking-tighter">${formatCurrency(asset.price)}</div>
                             </div>
                         </div>
-                        ${renderCandleChartSVG(asset.candles, 800)}
+                        ${chartHtml}
                     </div>
-
                     <div class="lg:col-span-4 space-y-4">
-                        <div class="p-6 rounded-lg border ${analysis.bg} ${analysis.color}">
-                            <div class="text-xs font-bold uppercase mb-1">Signal</div>
-                            <div class="text-4xl font-black">${analysis.signal}</div>
-                            <div class="text-xs opacity-70 mt-1">Score: ${analysis.score}/100</div>
+                        <div class="p-6 rounded-xl border-2 ${analysis.bg} ${analysis.color}">
+                            <div class="flex items-center gap-2 mb-2 text-xs font-bold uppercase opacity-80"><i data-lucide="activity" class="w-4 h-4"></i> Algo Signal</div>
+                            <div class="text-4xl font-black tracking-tight">${analysis.signal}</div>
+                            <div class="text-sm opacity-70 mt-2">Confidence Score: ${analysis.score}/100</div>
                         </div>
-
-                        <div class="bg-[#0e0e0e] border border-gray-800 rounded-lg p-5 space-y-6">
+                        <div class="bg-[#0e0e0e] border border-gray-800 rounded-xl p-6 space-y-6">
                             <div>
-                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2">Key Levels</h3>
-                                <div class="flex justify-between text-sm mb-1"><span>ATH</span> <span class="font-mono text-white">${formatCurrency(asset.ath)}</span></div>
-                                <div class="flex justify-between text-sm"><span>Mkt Cap</span> <span class="font-mono text-white">${formatMarketCap(asset.marketCap)}</span></div>
+                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-3 h-3"></i> Key Levels</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="bg-black p-3 rounded border border-gray-800"><div class="text-[10px] text-gray-500 uppercase mb-1">ATH</div><div class="text-white font-mono font-bold">${formatCurrency(asset.ath)}</div></div>
+                                    <div class="bg-black p-3 rounded border border-gray-800"><div class="text-[10px] text-gray-500 uppercase mb-1">Market Cap</div><div class="text-white font-mono font-bold">${formatMarketCap(asset.marketCap)}</div></div>
+                                </div>
                             </div>
-
                              <div>
-                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2">Discount Zone (${pctDown.toFixed(2)}% Down)</h3>
-                                <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative">
-                                    <div class="absolute top-0 bottom-0 w-full" style="background: ${barColor}"></div>
-                                    <div class="absolute top-0 bottom-0 w-1 bg-white" style="left: ${pct}%"></div>
-                                </div>
+                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between"><span>Discount Zone</span><span class="text-white">${pctDown.toFixed(2)}% Down</span></h3>
+                                <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative"><div class="absolute top-0 bottom-0 w-full" style="background: ${gradient}"></div><div class="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white] z-10" style="left: ${pct}%"></div></div>
                             </div>
-                            
                             <div>
-                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2">RSI (14): ${analysis.rsi.toFixed(1)}</h3>
-                                <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative">
-                                    <div class="absolute left-0 w-[30%] h-full bg-green-900/30"></div>
-                                    <div class="absolute right-0 w-[30%] h-full bg-red-900/30"></div>
-                                    <div class="absolute top-0 h-full w-2 bg-blue-500 rounded-full" style="left: ${analysis.rsi}%"></div>
-                                </div>
+                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between"><span>RSI (14)</span><span class="${analysis.rsi < 30 ? 'text-green-400' : analysis.rsi > 70 ? 'text-red-400' : 'text-white'}">${analysis.rsi.toFixed(1)}</span></h3>
+                                <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative"><div class="absolute left-0 w-[30%] h-full bg-green-900/30"></div><div class="absolute right-0 w-[30%] h-full bg-red-900/30"></div><div class="absolute top-0 h-full w-2 bg-blue-500 rounded-full transition-all duration-500" style="left: ${analysis.rsi}%"></div></div>
                             </div>
                         </div>
                     </div>
@@ -595,7 +581,7 @@
                         ${pl>=0?'+':''}${formatCurrency(pl)} <span class="text-xs font-normal opacity-70">(${plPct.toFixed(2)}%)</span>
                     </td>
                     <td class="p-4 text-center">
-                        <button onclick="removePortfolioItem('${item.symbol}')" class="text-red-500 hover:text-red-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        <button onclick="app.removePortfolioItem('${item.symbol}')" class="text-red-500 hover:text-red-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                     </td>
                 </tr>`;
             }).join('');
@@ -605,27 +591,16 @@
 
             return `
             <div class="animate-in fade-in space-y-6">
-                 <div class="flex justify-between items-end">
-                    <h2 class="text-2xl font-bold text-white">Long Term Portfolio</h2>
-                 </div>
+                 <div class="flex justify-between items-end"><h2 class="text-2xl font-bold text-white">Long Term Portfolio</h2></div>
                  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg">
-                        <div class="text-gray-500 text-xs uppercase">Total Invested</div>
-                        <div class="text-3xl font-mono text-white">${formatCurrency(totalInv)}</div>
-                    </div>
-                    <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg">
-                        <div class="text-gray-500 text-xs uppercase">Current Value</div>
-                        <div class="text-3xl font-mono text-blue-400">${formatCurrency(totalVal)}</div>
-                    </div>
-                     <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg">
-                        <div class="text-gray-500 text-xs uppercase">Total P/L</div>
-                        <div class="text-3xl font-mono ${totalPL>=0?'text-green-400':'text-red-400'}">${totalPL>=0?'+':''}${formatCurrency(totalPL)} (${totalPLPct.toFixed(2)}%)</div>
-                    </div>
+                    <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg"><div class="text-gray-500 text-xs uppercase">Total Invested</div><div class="text-3xl font-mono text-white">${formatCurrency(totalInv)}</div></div>
+                    <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg"><div class="text-gray-500 text-xs uppercase">Current Value</div><div class="text-3xl font-mono text-blue-400">${formatCurrency(totalVal)}</div></div>
+                     <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg"><div class="text-gray-500 text-xs uppercase">Total P/L</div><div class="text-3xl font-mono ${totalPL>=0?'text-green-400':'text-red-400'}">${totalPL>=0?'+':''}${formatCurrency(totalPL)} (${totalPLPct.toFixed(2)}%)</div></div>
                  </div>
 
                  <div class="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg">
                     <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i> Add Investment (DCA)</h3>
-                    <form onsubmit="addPortfolioItem(event)" class="flex gap-4 items-end">
+                    <form onsubmit="app.addPortfolioItem(event)" class="flex gap-4 items-end">
                         <div class="flex-1">
                             <label class="block text-xs text-gray-500 mb-1">Asset</label>
                             <select id="portSymbol" class="w-full bg-black border border-gray-700 text-white rounded px-3 py-2 text-sm">
@@ -656,95 +631,100 @@
         }
 
         function renderHeader() {
-            return `
-            <div class="h-14 border-b border-gray-800 flex items-center justify-between px-6 bg-[#050505] sticky top-0 z-50 backdrop-blur-md bg-opacity-80">
-                <div class="flex items-center gap-8">
-                    <div class="flex items-center gap-2 cursor-pointer" onclick="updateState({view:'dashboard'})">
-                        <div class="w-6 h-6 bg-blue-600 rounded flex items-center justify-center font-bold text-xs text-white">PT</div>
-                        <span class="font-bold text-lg tracking-tight text-white">PRO<span class="text-blue-500">TRADER</span></span>
-                    </div>
-                    <div class="hidden md:flex gap-1">
-                         <button onclick="updateState({view:'dashboard'})" class="px-4 py-1.5 rounded text-xs font-bold transition-all ${state.view==='dashboard'||state.view==='detail' ? 'bg-gray-800 text-white':'text-gray-500 hover:text-gray-300'}">SCANNER</button>
-                         <button onclick="updateState({view:'portfolio'})" class="px-4 py-1.5 rounded text-xs font-bold transition-all ${state.view==='portfolio' ? 'bg-gray-800 text-white':'text-gray-500 hover:text-gray-300'}">PORTFOLIO</button>
-                    </div>
-                </div>
-                <div class="flex items-center gap-3">
-                     <div class="hidden md:block text-right">
-                        <div class="text-[10px] text-gray-500 uppercase">Last Update</div>
-                        <div class="text-xs font-bold text-white">${state.lastUpdated.toLocaleTimeString()}</div>
-                     </div>
-                     <div class="flex flex-col items-end">
-                         <button onclick="fetchData()" ${state.isRefreshing ? 'disabled' : ''} class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-colors shadow-[0_0_10px_rgba(37,99,235,0.4)] ${state.isRefreshing ? 'opacity-50 cursor-not-allowed' : ''}">
-                            <i data-lucide="refresh-cw" class="w-3 h-3 ${state.isRefreshing ? 'animate-spin' : ''}"></i> ${state.isRefreshing ? 'FETCHING...' : 'REFRESH DATA'}
-                         </button>
-                         <div class="text-[9px] mt-1 text-gray-600 flex items-center gap-1">API: <span class="${state.apiStatus.includes('online') ? 'text-green-500' : 'text-orange-500'}">${state.apiStatus}</span></div>
-                     </div>
-                </div>
-            </div>`;
+             // (No major logic changes, just visual update status)
+             return ''; // Rendered static in HTML body, updated via DOM manipulation in render()
         }
 
-        // --- GLOBAL FUNCTIONS (exposed to window for HTML events) ---
-        window.setSort = (key) => {
-            let direction = 'asc';
-            if (state.sortConfig.key === key && state.sortConfig.direction === 'asc') direction = 'desc';
-            updateState({ sortConfig: { key, direction } });
-        };
-        window.setStrategy = (s) => updateState({ strategy: s });
-        window.selectAsset = (s) => {
-            state.selectedAsset = s;
-            updateState({ view: 'detail' });
-        };
-        window.fetchData = fetchData; // Expose fetch function
-        window.updateState = updateState; // For nav buttons
-        
-        window.addPortfolioItem = (e) => {
-            e.preventDefault();
-            const sym = document.getElementById('portSymbol').value;
-            const amt = parseFloat(document.getElementById('portAmount').value);
-            if(!sym || !amt) return;
-            
-            const asset = state.allAssets.find(a => a.symbol === sym);
-            if(!asset) { alert("Asset error"); return; }
-            
-            const price = asset.price;
-            const shares = amt / price;
-            
-            // Check exists
-            const existing = state.portfolio.find(p => p.symbol === sym);
-            let newPort = [];
-            if(existing) {
-                newPort = state.portfolio.map(p => p.symbol === sym ? { ...p, shares: p.shares + shares, invested: p.invested + amt, avgCost: (p.invested + amt)/(p.shares+shares) } : p);
-            } else {
-                newPort = [...state.portfolio, { symbol: sym, shares, invested: amt, avgCost: price }];
+        // --- APP CONTROLLER ---
+        const app = {
+            setView: (v) => {
+                state.view = v;
+                document.getElementById('nav-dashboard').className = `px-4 py-1.5 rounded text-xs font-bold transition-all ${v === 'dashboard' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-white'}`;
+                document.getElementById('nav-portfolio').className = `px-4 py-1.5 rounded text-xs font-bold transition-all ${v === 'portfolio' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-white'}`;
+                render();
+            },
+            setSort: (key) => {
+                let direction = 'asc';
+                if (state.sortConfig.key === key && state.sortConfig.direction === 'asc') direction = 'desc';
+                updateState({ sortConfig: { key, direction } });
+            },
+            setStrategy: (s) => updateState({ strategy: s }),
+            selectAsset: (s) => {
+                state.selectedAsset = s;
+                state.view = 'detail';
+                render();
+            },
+            handleRefresh: fetchData, 
+            addPortfolioItem: (e) => {
+                e.preventDefault();
+                const sym = document.getElementById('portSymbol').value;
+                const amt = parseFloat(document.getElementById('portAmount').value);
+                if(!sym || !amt) return;
+                
+                const asset = state.allAssets.find(a => a.symbol === sym);
+                if(!asset) { alert("Asset error"); return; }
+                
+                const price = asset.price;
+                const shares = amt / price;
+                
+                const existing = state.portfolio.find(p => p.symbol === sym);
+                let newPort = [];
+                if(existing) {
+                    newPort = state.portfolio.map(p => p.symbol === sym ? { ...p, shares: p.shares + shares, invested: p.invested + amt, avgCost: (p.invested + amt)/(p.shares+shares) } : p);
+                } else {
+                    newPort = [...state.portfolio, { symbol: sym, shares, invested: amt, avgCost: price }];
+                }
+                
+                localStorage.setItem('proTraderPortfolio', JSON.stringify(newPort));
+                state.portfolio = newPort;
+                render();
+            },
+            removePortfolioItem: (sym) => {
+                if(!confirm('Remove this position?')) return;
+                const newPort = state.portfolio.filter(p => p.symbol !== sym);
+                localStorage.setItem('proTraderPortfolio', JSON.stringify(newPort));
+                state.portfolio = newPort;
+                render();
             }
-            
-            localStorage.setItem('proTraderPortfolio', JSON.stringify(newPort));
-            state.portfolio = newPort;
-            render();
         };
 
-        window.removePortfolioItem = (sym) => {
-            const newPort = state.portfolio.filter(p => p.symbol !== sym);
-            localStorage.setItem('proTraderPortfolio', JSON.stringify(newPort));
-            state.portfolio = newPort;
-            render();
-        };
+        window.app = app;
 
-        // --- MAIN RENDER LOOP ---
         function render() {
             const root = document.getElementById('root');
+            
+            document.getElementById('last-updated').innerText = state.lastUpdated.toLocaleTimeString();
+            const refreshBtn = document.getElementById('refresh-btn');
+            const refreshText = document.getElementById('refresh-text');
+            const apiStatus = document.getElementById('api-status');
+            
+            if (state.isRefreshing) {
+                refreshBtn.classList.add('opacity-70', 'cursor-not-allowed');
+                refreshBtn.querySelector('i').classList.add('spin-slow');
+                refreshText.innerText = 'FETCHING...';
+                apiStatus.innerText = 'CONNECTING...';
+                apiStatus.className = 'text-yellow-500';
+            } else {
+                refreshBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                refreshBtn.querySelector('i').classList.remove('spin-slow');
+                refreshText.innerText = 'REFRESH DATA';
+                
+                if (state.apiStatus.includes('ONLINE')) apiStatus.className = 'text-green-500';
+                else if (state.apiStatus.includes('OFFLINE')) apiStatus.className = 'text-orange-500';
+                else apiStatus.className = 'text-red-500';
+                
+                apiStatus.innerText = state.apiStatus.toUpperCase();
+            }
+
             let content = '';
             if (state.view === 'dashboard') content = renderDashboard();
             else if (state.view === 'detail') content = renderDetail();
             else if (state.view === 'portfolio') content = renderPortfolio();
             
-            root.innerHTML = renderHeader() + `<div class="p-6 max-w-7xl mx-auto w-full">${content}</div>`;
-            
-            // Re-init icons
+            root.innerHTML = content;
             if(window.lucide) window.lucide.createIcons();
         }
 
-        // Start
         init();
 
     </script>
