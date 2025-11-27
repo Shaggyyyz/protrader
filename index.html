@@ -1,838 +1,752 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Activity, BarChart2, ArrowLeft, Calendar, RefreshCw, Clock, TrendingUp, TrendingDown, DollarSign, Wifi, Info, ArrowUp, ArrowDown, ChevronsUpDown, CheckCircle, PieChart, Plus, Trash2, Wallet, Gauge, Zap, Filter, Layers, AlertTriangle } from 'lucide-react';
-
-// --- CONFIGURATION ---
-const MARKETSTACK_KEY = '29f6e55e359cea3c32dfb279a4901516'; 
-const MARKETSTACK_BASE_URL = 'http://api.marketstack.com/v2'; // Note: HTTP
-
-const BASE_POOL = [
-  // --- INDICES / COMMODITIES (Always Shown) ---
-  { symbol: 'SPY', name: 'S&P 500 ETF', type: 'index', price: 679.68, ath: 689.70, volatility: 0.012, marketCap: 613, alwaysShow: true }, 
-  { symbol: 'BTC', name: 'Bitcoin', type: 'crypto', price: 91316.66, ath: 126080.00, volatility: 0.045, marketCap: 1800, alwaysShow: true },
-  { symbol: 'XAU', name: 'Gold', type: 'commodity', price: 4162.90, ath: 4250.00, volatility: 0.008, marketCap: 18000, alwaysShow: true },
-
-  // --- STOCKS (Expanded Pool) ---
-  { symbol: 'NVDA', name: 'NVIDIA Corp', type: 'stock', price: 182.55, ath: 212.19, volatility: 0.035, marketCap: 4321 },
-  { symbol: 'AAPL', name: 'Apple Inc', type: 'stock', price: 277.55, ath: 280.38, volatility: 0.015, marketCap: 4100 },
-  { symbol: 'GOOGL', name: 'Alphabet', type: 'stock', price: 319.95, ath: 328.83, volatility: 0.020, marketCap: 3860 },
-  { symbol: 'MSFT', name: 'Microsoft', type: 'stock', price: 476.99, ath: 555.45, volatility: 0.018, marketCap: 3520 },
-  { symbol: 'AMZN', name: 'Amazon', type: 'stock', price: 229.51, ath: 258.60, volatility: 0.022, marketCap: 2450 },
-  { symbol: 'AVGO', name: 'Broadcom', type: 'stock', price: 385.03, ath: 399.87, volatility: 0.025, marketCap: 1880 },
-  { symbol: 'META', name: 'Meta Platforms', type: 'stock', price: 635.80, ath: 796.25, volatility: 0.030, marketCap: 1600 },
-  { symbol: 'TSLA', name: 'Tesla Inc', type: 'stock', price: 419.10, ath: 488.54, volatility: 0.050, marketCap: 1420 },
-  { symbol: 'BRK.B', name: 'Berkshire Hath', type: 'stock', price: 508.60, ath: 542.07, volatility: 0.010, marketCap: 1110 },
-  { symbol: 'LLY', name: 'Eli Lilly', type: 'stock', price: 1103.27, ath: 1118.00, volatility: 0.015, marketCap: 1040 },
-  { symbol: 'WMT', name: 'Walmart', type: 'stock', price: 106.07, ath: 109.59, volatility: 0.010, marketCap: 870 },
-  { symbol: 'JPM', name: 'JPMorgan Chase', type: 'stock', price: 298.56, ath: 300.00, volatility: 0.012, marketCap: 837 },
-  { symbol: 'V', name: 'Visa', type: 'stock', price: 315.00, ath: 320.00, volatility: 0.011, marketCap: 627 },
-  { symbol: 'MA', name: 'Mastercard', type: 'stock', price: 520.00, ath: 530.00, volatility: 0.012, marketCap: 480 },
-  { symbol: 'BAC', name: 'Bank of America', type: 'stock', price: 46.50, ath: 55.00, volatility: 0.015, marketCap: 360 },
-  { symbol: 'UNH', name: 'UnitedHealth', type: 'stock', price: 580.00, ath: 600.00, volatility: 0.012, marketCap: 530 },
-  { symbol: 'JNJ', name: 'Johnson & Johnson', type: 'stock', price: 155.00, ath: 175.00, volatility: 0.010, marketCap: 370 },
-  { symbol: 'MRK', name: 'Merck & Co', type: 'stock', price: 105.00, ath: 130.00, volatility: 0.012, marketCap: 260 },
-  { symbol: 'ABBV', name: 'AbbVie', type: 'stock', price: 195.00, ath: 200.00, volatility: 0.013, marketCap: 340 },
-  { symbol: 'COST', name: 'Costco', type: 'stock', price: 940.00, ath: 960.00, volatility: 0.015, marketCap: 420 },
-  { symbol: 'PG', name: 'Procter & Gamble', type: 'stock', price: 175.00, ath: 180.00, volatility: 0.008, marketCap: 410 },
-  { symbol: 'HD', name: 'Home Depot', type: 'stock', price: 410.00, ath: 420.00, volatility: 0.014, marketCap: 400 },
-  { symbol: 'KO', name: 'Coca-Cola', type: 'stock', price: 68.00, ath: 72.00, volatility: 0.008, marketCap: 290 },
-  { symbol: 'PEP', name: 'PepsiCo', type: 'stock', price: 165.00, ath: 180.00, volatility: 0.009, marketCap: 230 },
-  { symbol: 'XOM', name: 'Exxon Mobil', type: 'stock', price: 114.51, ath: 121.88, volatility: 0.014, marketCap: 482 },
-  { symbol: 'CVX', name: 'Chevron', type: 'stock', price: 155.00, ath: 170.00, volatility: 0.015, marketCap: 280 },
-  { symbol: 'PLTR', name: 'Palantir', type: 'stock', price: 165.77, ath: 207.52, volatility: 0.060, marketCap: 391 }, 
-  { symbol: 'COIN', name: 'Coinbase', type: 'stock', price: 265.03, ath: 444.65, volatility: 0.070, marketCap: 71 },
-  { symbol: 'NFLX', name: 'Netflix', type: 'stock', price: 890.00, ath: 900.00, volatility: 0.025, marketCap: 380 },
-  { symbol: 'AMD', name: 'AMD', type: 'stock', price: 145.00, ath: 220.00, volatility: 0.040, marketCap: 235 },
-  { symbol: 'CRM', name: 'Salesforce', type: 'stock', price: 330.00, ath: 340.00, volatility: 0.020, marketCap: 320 },
-  { symbol: 'ORCL', name: 'Oracle', type: 'stock', price: 185.00, ath: 195.00, volatility: 0.018, marketCap: 510 },
-  { symbol: 'ADBE', name: 'Adobe', type: 'stock', price: 520.00, ath: 600.00, volatility: 0.022, marketCap: 230 },
-  { symbol: 'DIS', name: 'Disney', type: 'stock', price: 115.00, ath: 125.00, volatility: 0.018, marketCap: 210 },
-  { symbol: 'NKE', name: 'Nike', type: 'stock', price: 85.00, ath: 100.00, volatility: 0.015, marketCap: 130 },
-  { symbol: 'INTC', name: 'Intel', type: 'stock', price: 24.00, ath: 50.00, volatility: 0.030, marketCap: 100 },
-  { symbol: 'TMO', name: 'Thermo Fisher', type: 'stock', price: 580.00, ath: 620.00, volatility: 0.012, marketCap: 220 },
-  { symbol: 'ABT', name: 'Abbott Labs', type: 'stock', price: 115.00, ath: 120.00, volatility: 0.010, marketCap: 200 },
-  { symbol: 'CMCSA', name: 'Comcast', type: 'stock', price: 42.00, ath: 48.00, volatility: 0.012, marketCap: 165 },
-  { symbol: 'VZ', name: 'Verizon', type: 'stock', price: 44.00, ath: 45.00, volatility: 0.008, marketCap: 185 },
-  { symbol: 'PFE', name: 'Pfizer', type: 'stock', price: 28.00, ath: 35.00, volatility: 0.012, marketCap: 158 },
-  { symbol: 'CSCO', name: 'Cisco', type: 'stock', price: 58.00, ath: 60.00, volatility: 0.010, marketCap: 230 },
-  { symbol: 'ACN', name: 'Accenture', type: 'stock', price: 360.00, ath: 380.00, volatility: 0.015, marketCap: 225 },
-  { symbol: 'MCD', name: 'McDonalds', type: 'stock', price: 300.00, ath: 310.00, volatility: 0.010, marketCap: 215 },
-  { symbol: 'DHR', name: 'Danaher', type: 'stock', price: 270.00, ath: 280.00, volatility: 0.014, marketCap: 200 },
-  { symbol: 'LIN', name: 'Linde', type: 'stock', price: 460.00, ath: 480.00, volatility: 0.012, marketCap: 220 }
-];
-
-// LIVE DATA Defaults
-const VIX_BASE = 17.19; 
-const FEAR_GREED_BASE = { value: 18, status: 'Extreme Fear' };
-
-// --- UTILS ---
-const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(val);
-
-const formatMarketCap = (val) => {
-    if (val >= 1000) return `$${(val / 1000).toFixed(2)} T`;
-    return `$${val.toFixed(2)} B`;
-};
-
-const formatDate = (daysAgo = 0) => {
-    const date = new Date();
-    date.setDate(date.getDate() - daysAgo);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-};
-
-// --- TECHNICAL INDICATORS ---
-
-const calculateRSI = (candles, period = 14) => {
-  if (candles.length < period + 1) return 50;
-  let gains = 0, losses = 0;
-  for (let i = period; i > 0; i--) {
-    const currentClose = candles[i-1].close;
-    const prevClose = candles[i].close;
-    const change = currentClose - prevClose;
-    if (change >= 0) gains += change; else losses += Math.abs(change);
-  }
-  let avgGain = gains / period;
-  let avgLoss = losses / period;
-  const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-  return 100 - (100 / (1 + rs));
-};
-
-// --- CHARTING ENGINE ---
-
-const generateHistoryFromPrice = (currentPrice, volatility, days = 90) => {
-  let candles = [];
-  let price = currentPrice;
-  for (let i = 0; i < days; i++) {
-    const changePercent = (Math.random() - 0.48) * (volatility * 1.5); 
-    const move = price * changePercent;
-    const close = price;
-    const open = price - move; 
-    const bodyMax = Math.max(open, close);
-    const bodyMin = Math.min(open, close);
-    const high = bodyMax + (Math.random() * (price * 0.01));
-    const low = bodyMin - (Math.random() * (price * 0.01));
-    candles.push({ day: days - 1 - i, date: formatDate(i), open, high, low, close });
-    price = open; 
-  }
-  return candles.reverse();
-};
-
-// --- COMPONENTS ---
-
-const CandleChart = ({ data, width = 600, height = 300 }) => {
-  const containerRef = useRef(null);
-  const [chartWidth, setChartWidth] = useState(width);
-
-  useEffect(() => {
-    if (containerRef.current) setChartWidth(containerRef.current.offsetWidth);
-  }, [containerRef.current]);
-
-  if (!data || data.length === 0) return <div className="h-64 flex items-center justify-center text-gray-500">Initializing Chart...</div>;
-
-  const allHighs = data.map(d => d.high);
-  const allLows = data.map(d => d.low);
-  const maxPrice = Math.max(...allHighs);
-  const minPrice = Math.min(...allLows);
-  const priceRange = maxPrice - minPrice || 1;
-  const padding = 20;
-  const candleWidth = (chartWidth - (padding * 2)) / data.length;
-  const gap = Math.max(1, candleWidth * 0.2);
-  const barWidth = Math.max(1, candleWidth - gap);
-  const getY = (price) => height - padding - ((price - minPrice) / priceRange) * (height - (padding * 2));
-  const getX = (index) => padding + (index * candleWidth);
-
-  return (
-    <div ref={containerRef} className="w-full h-[350px] bg-[#0e0e0e] rounded-lg border border-gray-800 relative select-none group">
-      <div className="absolute right-2 top-2 text-xs text-gray-500">{formatCurrency(maxPrice)}</div>
-      <div className="absolute right-2 bottom-2 text-xs text-gray-500">{formatCurrency(minPrice)}</div>
-      <div className="absolute inset-0 pointer-events-none">
-          <div className="w-full h-px bg-gray-800 absolute top-1/4"></div>
-          <div className="w-full h-px bg-gray-800 absolute top-2/4"></div>
-          <div className="w-full h-px bg-gray-800 absolute top-3/4"></div>
-      </div>
-      <svg width="100%" height="100%" className="overflow-visible">
-        {data.map((candle, i) => {
-          const x = getX(i);
-          const isGreen = candle.close >= candle.open;
-          const color = isGreen ? '#22c55e' : '#ef4444';
-          const wickX = x + barWidth / 2;
-          let bodyHeight = Math.abs(getY(candle.close) - getY(candle.open));
-          if (bodyHeight < 1) bodyHeight = 1;
-          const bodyY = Math.min(getY(candle.open), getY(candle.close));
-          return (
-            <g key={i} className="hover:opacity-100 opacity-90 transition-opacity">
-              <line x1={wickX} y1={getY(candle.high)} x2={wickX} y2={getY(candle.low)} stroke={color} strokeWidth="1" />
-              <rect x={x} y={bodyY} width={barWidth} height={bodyHeight} fill={color} />
-              <title>{`${candle.date}: O:${candle.open.toFixed(2)} C:${candle.close.toFixed(2)}`}</title>
-            </g>
-          );
-        })}
-         <line x1="0" y1={getY(data[data.length-1].close)} x2="100%" y2={getY(data[data.length-1].close)} stroke="#3b82f6" strokeWidth="0.5" strokeDasharray="4 2" opacity="0.6"/>
-      </svg>
-    </div>
-  );
-};
-
-const MiniChart = ({ data, color }) => {
-  if (!data || data.length === 0) return null;
-  const width = 80;
-  const height = 30;
-  const prices = data.map(c => c.close);
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const range = max - min || 1;
-  const points = prices.slice(-15).map((p, i) => {
-    const x = (i / 14) * width;
-    const y = height - ((p - min) / range) * height;
-    return `${x},${y}`;
-  }).join(' ');
-  return <svg width={width} height={height} className="overflow-visible"><polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-};
-
-const ATHZoneIndicator = ({ pctDown }) => {
-  const zones = [
-    { label: '0-5%', range: [0, 5], color: 'bg-gray-600', text: 'Near ATH' },
-    { label: '5-10%', range: [5, 10], color: 'bg-yellow-600', text: 'Dip' },
-    { label: '10-15%', range: [10, 15], color: 'bg-orange-600', text: 'Correction' },
-    { label: '15-20%', range: [15, 20], color: 'bg-red-600', text: 'Bearish' },
-    { label: '20-25%', range: [20, 25], color: 'bg-purple-600', text: 'Deep Value 1' },
-    { label: '25-30%', range: [25, 30], color: 'bg-purple-700', text: 'Deep Value 2' },
-    { label: '30-35%', range: [30, 35], color: 'bg-indigo-600', text: 'Crash Zone 1' },
-    { label: '40-45%', range: [40, 45], color: 'bg-indigo-700', text: 'Crash Zone 2' },
-    { label: '50-55%', range: [50, 55], color: 'bg-blue-800', text: 'Crisis 1' },
-    { label: '55-60%', range: [55, 60], color: 'bg-blue-900', text: 'Crisis 2' },
-    { label: '60-65%', range: [60, 65], color: 'bg-green-900', text: 'Generational 1' },
-    { label: '70-75%', range: [70, 75], color: 'bg-green-700', text: 'Generational 2' },
-    { label: '75%+', range: [75, 1000], color: 'bg-green-500', text: 'Generational 3' },
-  ];
-
-  const activeZone = zones.find(z => pctDown >= z.range[0] && pctDown < z.range[1]) || 
-                     (pctDown >= 75 ? zones[zones.length-1] : zones[0]);
-
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between text-xs uppercase tracking-wider text-gray-500">
-        <span>Accumulation Zone</span>
-        <span className="text-white font-bold">{activeZone.text}</span>
-      </div>
-      <div className="flex w-full h-2 rounded-full overflow-hidden bg-gray-800">
-        <div className="w-full h-full bg-gradient-to-r from-gray-600 via-red-500 to-green-500 relative">
-             <div 
-                className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white]"
-                style={{ left: `${Math.min(pctDown, 100)}%` }}
-             ></div>
-        </div>
-      </div>
-      <div className="text-[10px] text-gray-500 text-right">{pctDown.toFixed(2)}% Down</div>
-    </div>
-  );
-};
-
-const RSIIndicator = ({ rsi }) => {
-  let status = "Neutral";
-  let color = "text-gray-400";
-  let barColor = "bg-gray-500";
-  if (rsi > 70) { status = "Overbought"; color = "text-red-400"; barColor = "bg-red-500"; } 
-  else if (rsi < 30) { status = "Oversold"; color = "text-green-400"; barColor = "bg-green-500"; }
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-between text-xs uppercase tracking-wider text-gray-500">
-        <span>RSI (14)</span>
-        <span className={`${color} font-bold`}>{rsi.toFixed(1)} - {status}</span>
-      </div>
-      <div className="relative w-full h-2 rounded-full bg-gray-800 overflow-hidden">
-        <div className="absolute left-0 w-[30%] h-full bg-green-900/30"></div>
-        <div className="absolute right-0 w-[30%] h-full bg-red-900/30"></div>
-        <div className={`absolute top-0 h-full w-2 rounded-full ${barColor} transition-all duration-500`} style={{ left: `${rsi}%` }}></div>
-      </div>
-      <div className="flex justify-between text-[10px] text-gray-600 font-mono">
-        <span>0</span><span>30</span><span>70</span><span>100</span>
-      </div>
-    </div>
-  );
-};
-
-const FearGreedWidget = ({ data }) => {
-    const rotation = (data.value / 100) * 180 - 90; 
-    let colorClass = "text-gray-400";
-    if (data.value < 25) colorClass = "text-red-500"; 
-    else if (data.value < 45) colorClass = "text-orange-400"; 
-    else if (data.value > 75) colorClass = "text-green-500"; 
-    else if (data.value > 55) colorClass = "text-green-300"; 
-
-    return (
-        <div className="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg flex flex-col justify-between relative overflow-hidden">
-            <div className="flex justify-between items-start mb-2 relative z-10">
-                <div>
-                    <h3 className="text-gray-500 text-xs font-bold uppercase flex items-center gap-2">
-                        <Gauge size={14} /> Fear & Greed Index
-                    </h3>
-                    <div className={`text-2xl font-black mt-1 ${colorClass}`}>
-                        {data.value}
-                    </div>
-                    <div className="text-xs text-gray-400 font-medium">{data.status}</div>
-                </div>
-            </div>
-            
-            <div className="relative h-16 w-full flex items-end justify-center overflow-hidden mt-2">
-                <div className="absolute bottom-0 w-32 h-16 bg-gray-800 rounded-t-full overflow-hidden">
-                    <div className="w-full h-full relative">
-                        <div className="absolute bottom-0 left-0 w-full h-full bg-gradient-to-r from-red-600 via-yellow-500 to-green-600 opacity-20"></div>
-                    </div>
-                </div>
-                <div 
-                    className="absolute bottom-0 w-1 h-14 bg-white origin-bottom transition-all duration-1000 ease-out z-20"
-                    style={{ transform: `rotate(${rotation}deg)` }}
-                ></div>
-                <div className="absolute bottom-0 w-4 h-2 bg-gray-200 rounded-t-full z-30"></div>
-            </div>
-            <p className="text-[10px] text-gray-600 text-center mt-2">
-                "Be fearful when others are greedy, and greedy when others are fearful."
-            </p>
-        </div>
-    );
-};
-
-// --- MAIN COMPONENT ---
-
-export default function ProTraderApp() {
-  
-  // --- STATE INITIALIZATION ---
-  const getAllAssets = () => {
-      return BASE_POOL.map(base => ({
-          ...base,
-          candles: generateHistoryFromPrice(base.price, base.volatility, 90)
-      }));
-  };
-
-  const [allAssets, setAllAssets] = useState(() => getAllAssets());
-  const [vix, setVix] = useState(VIX_BASE);
-  const [fearGreed, setFearGreed] = useState(FEAR_GREED_BASE);
-  const [selectedAsset, setSelectedAsset] = useState(null);
-  const [view, setView] = useState('dashboard'); 
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
-  const [strategy, setStrategy] = useState('hybrid'); 
-  const [apiStatus, setApiStatus] = useState('offline (cached)');
-
-  const [portfolio, setPortfolio] = useState(() => {
-      const saved = localStorage.getItem('proTraderPortfolio');
-      return saved ? JSON.parse(saved) : [];
-  });
-  const [portfolioInput, setPortfolioInput] = useState({ symbol: '', amount: '' });
-
-  useEffect(() => {
-      localStorage.setItem('proTraderPortfolio', JSON.stringify(portfolio));
-  }, [portfolio]);
-
-  // --- ACTIONS ---
-  const handleAssetClick = (asset) => {
-    setSelectedAsset(asset);
-    setView('detail');
-  };
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    setApiStatus('fetching...');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Trader Dashboard</title>
     
-    try {
-        // 1. Fetch Bitcoin (CoinGecko)
-        const btcRes = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin');
-        const btcData = await btcRes.json();
-        const realBtc = btcData[0] ? { price: btcData[0].current_price, ath: btcData[0].ath, marketCap: btcData[0].market_cap/1e9 } : null;
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
 
-        // 2. Fetch Stocks (Marketstack V2 Batch)
-        // NOTE: Marketstack Free tier only allows HTTP (not HTTPS). 
-        // Browsers will block this on HTTPS sites. User must run this on localhost or allow Mixed Content.
-        let marketstackData = [];
-        let tickersData = [];
-        try {
-            // Get symbols to batch
-            const symbols = BASE_POOL.filter(a => a.type === 'stock').map(a => a.symbol).join(',');
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #000; color: #e5e7eb; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Custom Scrollbar for tables */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0e0e0e; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+    </style>
+</head>
+<body>
+
+    <!-- APP CONTAINER -->
+    <div id="root" class="min-h-screen flex flex-col">
+        <!-- Content injected by JS -->
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const MARKETSTACK_KEY = '29f6e55e359cea3c32dfb279a4901516';
+        const MARKETSTACK_BASE_URL = 'http://api.marketstack.com/v2';
+
+        const BASE_POOL = [
+            { symbol: 'SPY', name: 'S&P 500 ETF', type: 'index', price: 679.68, ath: 689.70, volatility: 0.012, marketCap: 613, alwaysShow: true }, 
+            { symbol: 'BTC', name: 'Bitcoin', type: 'crypto', price: 91316.66, ath: 126080.00, volatility: 0.045, marketCap: 1800, alwaysShow: true },
+            { symbol: 'XAU', name: 'Gold', type: 'commodity', price: 4162.90, ath: 4250.00, volatility: 0.008, marketCap: 18000, alwaysShow: true },
+            { symbol: 'NVDA', name: 'NVIDIA Corp', type: 'stock', price: 182.55, ath: 212.19, volatility: 0.035, marketCap: 4321 },
+            { symbol: 'AAPL', name: 'Apple Inc', type: 'stock', price: 277.55, ath: 280.38, volatility: 0.015, marketCap: 4100 },
+            { symbol: 'GOOGL', name: 'Alphabet', type: 'stock', price: 319.95, ath: 328.83, volatility: 0.020, marketCap: 3860 },
+            { symbol: 'MSFT', name: 'Microsoft', type: 'stock', price: 476.99, ath: 555.45, volatility: 0.018, marketCap: 3520 },
+            { symbol: 'AMZN', name: 'Amazon', type: 'stock', price: 229.51, ath: 258.60, volatility: 0.022, marketCap: 2450 },
+            { symbol: 'AVGO', name: 'Broadcom', type: 'stock', price: 385.03, ath: 399.87, volatility: 0.025, marketCap: 1880 },
+            { symbol: 'META', name: 'Meta Platforms', type: 'stock', price: 635.80, ath: 796.25, volatility: 0.030, marketCap: 1600 },
+            { symbol: 'TSLA', name: 'Tesla Inc', type: 'stock', price: 419.10, ath: 488.54, volatility: 0.050, marketCap: 1420 },
+            { symbol: 'BRK.B', name: 'Berkshire Hath', type: 'stock', price: 508.60, ath: 542.07, volatility: 0.010, marketCap: 1110 },
+            { symbol: 'LLY', name: 'Eli Lilly', type: 'stock', price: 1103.27, ath: 1118.00, volatility: 0.015, marketCap: 1040 },
+            { symbol: 'WMT', name: 'Walmart', type: 'stock', price: 106.07, ath: 109.59, volatility: 0.010, marketCap: 870 },
+            { symbol: 'JPM', name: 'JPMorgan Chase', type: 'stock', price: 298.56, ath: 300.00, volatility: 0.012, marketCap: 837 },
+            { symbol: 'V', name: 'Visa', type: 'stock', price: 315.00, ath: 320.00, volatility: 0.011, marketCap: 627 },
+            { symbol: 'MA', name: 'Mastercard', type: 'stock', price: 520.00, ath: 530.00, volatility: 0.012, marketCap: 480 },
+            { symbol: 'BAC', name: 'Bank of America', type: 'stock', price: 46.50, ath: 55.00, volatility: 0.015, marketCap: 360 },
+            { symbol: 'UNH', name: 'UnitedHealth', type: 'stock', price: 580.00, ath: 600.00, volatility: 0.012, marketCap: 530 },
+            { symbol: 'JNJ', name: 'Johnson & Johnson', type: 'stock', price: 155.00, ath: 175.00, volatility: 0.010, marketCap: 370 },
+            { symbol: 'MRK', name: 'Merck & Co', type: 'stock', price: 105.00, ath: 130.00, volatility: 0.012, marketCap: 260 },
+            { symbol: 'ABBV', name: 'AbbVie', type: 'stock', price: 195.00, ath: 200.00, volatility: 0.013, marketCap: 340 },
+            { symbol: 'COST', name: 'Costco', type: 'stock', price: 940.00, ath: 960.00, volatility: 0.015, marketCap: 420 },
+            { symbol: 'PG', name: 'Procter & Gamble', type: 'stock', price: 175.00, ath: 180.00, volatility: 0.008, marketCap: 410 },
+            { symbol: 'HD', name: 'Home Depot', type: 'stock', price: 410.00, ath: 420.00, volatility: 0.014, marketCap: 400 },
+            { symbol: 'KO', name: 'Coca-Cola', type: 'stock', price: 68.00, ath: 72.00, volatility: 0.008, marketCap: 290 },
+            { symbol: 'PEP', name: 'PepsiCo', type: 'stock', price: 165.00, ath: 180.00, volatility: 0.009, marketCap: 230 },
+            { symbol: 'XOM', name: 'Exxon Mobil', type: 'stock', price: 114.51, ath: 121.88, volatility: 0.014, marketCap: 482 },
+            { symbol: 'CVX', name: 'Chevron', type: 'stock', price: 155.00, ath: 170.00, volatility: 0.015, marketCap: 280 },
+            { symbol: 'PLTR', name: 'Palantir', type: 'stock', price: 165.77, ath: 207.52, volatility: 0.060, marketCap: 391 }, 
+            { symbol: 'COIN', name: 'Coinbase', type: 'stock', price: 265.03, ath: 444.65, volatility: 0.070, marketCap: 71 },
+            { symbol: 'NFLX', name: 'Netflix', type: 'stock', price: 890.00, ath: 900.00, volatility: 0.025, marketCap: 380 },
+            { symbol: 'AMD', name: 'AMD', type: 'stock', price: 145.00, ath: 220.00, volatility: 0.040, marketCap: 235 },
+            { symbol: 'CRM', name: 'Salesforce', type: 'stock', price: 330.00, ath: 340.00, volatility: 0.020, marketCap: 320 },
+            { symbol: 'ORCL', name: 'Oracle', type: 'stock', price: 185.00, ath: 195.00, volatility: 0.018, marketCap: 510 },
+            { symbol: 'ADBE', name: 'Adobe', type: 'stock', price: 520.00, ath: 600.00, volatility: 0.022, marketCap: 230 },
+            { symbol: 'DIS', name: 'Disney', type: 'stock', price: 115.00, ath: 125.00, volatility: 0.018, marketCap: 210 },
+            { symbol: 'NKE', name: 'Nike', type: 'stock', price: 85.00, ath: 100.00, volatility: 0.015, marketCap: 130 },
+            { symbol: 'INTC', name: 'Intel', type: 'stock', price: 24.00, ath: 50.00, volatility: 0.030, marketCap: 100 },
+            { symbol: 'TMO', name: 'Thermo Fisher', type: 'stock', price: 580.00, ath: 620.00, volatility: 0.012, marketCap: 220 },
+            { symbol: 'ABT', name: 'Abbott Labs', type: 'stock', price: 115.00, ath: 120.00, volatility: 0.010, marketCap: 200 },
+            { symbol: 'CMCSA', name: 'Comcast', type: 'stock', price: 42.00, ath: 48.00, volatility: 0.012, marketCap: 165 },
+            { symbol: 'VZ', name: 'Verizon', type: 'stock', price: 44.00, ath: 45.00, volatility: 0.008, marketCap: 185 },
+            { symbol: 'PFE', name: 'Pfizer', type: 'stock', price: 28.00, ath: 35.00, volatility: 0.012, marketCap: 158 },
+            { symbol: 'CSCO', name: 'Cisco', type: 'stock', price: 58.00, ath: 60.00, volatility: 0.010, marketCap: 230 },
+            { symbol: 'ACN', name: 'Accenture', type: 'stock', price: 360.00, ath: 380.00, volatility: 0.015, marketCap: 225 },
+            { symbol: 'MCD', name: 'McDonalds', type: 'stock', price: 300.00, ath: 310.00, volatility: 0.010, marketCap: 215 },
+            { symbol: 'DHR', name: 'Danaher', type: 'stock', price: 270.00, ath: 280.00, volatility: 0.014, marketCap: 200 },
+            { symbol: 'LIN', name: 'Linde', type: 'stock', price: 460.00, ath: 480.00, volatility: 0.012, marketCap: 220 }
+        ];
+
+        // --- STATE MANAGEMENT ---
+        const state = {
+            allAssets: [],
+            vix: 17.19,
+            fearGreed: { value: 18, status: 'Extreme Fear' },
+            selectedAsset: null,
+            view: 'dashboard', // dashboard, detail, portfolio
+            isRefreshing: false,
+            lastUpdated: new Date(),
+            sortConfig: { key: null, direction: 'asc' },
+            strategy: 'hybrid',
+            apiStatus: 'offline (cached)',
+            portfolio: JSON.parse(localStorage.getItem('proTraderPortfolio')) || []
+        };
+
+        // --- UTILS ---
+        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(val);
+        const formatMarketCap = (val) => val >= 1000 ? `$${(val / 1000).toFixed(2)} T` : `$${val.toFixed(2)} B`;
+        const formatDate = (daysAgo = 0) => {
+            const date = new Date();
+            date.setDate(date.getDate() - daysAgo);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        };
+
+        // --- CALCULATIONS ---
+        const calculateRSI = (candles, period = 14) => {
+            if (candles.length < period + 1) return 50;
+            let gains = 0, losses = 0;
+            // Iterate backwards for calculation logic consistency
+            for (let i = period; i > 0; i--) {
+                const currentClose = candles[i-1].close;
+                const prevClose = candles[i].close;
+                const change = currentClose - prevClose;
+                if (change >= 0) gains += change; else losses += Math.abs(change);
+            }
+            let avgGain = gains / period;
+            let avgLoss = losses / period;
+            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+            return 100 - (100 / (1 + rs));
+        };
+
+        const generateHistoryFromPrice = (currentPrice, volatility, days = 90) => {
+            let candles = [];
+            let price = currentPrice;
+            for (let i = 0; i < days; i++) {
+                const changePercent = (Math.random() - 0.48) * (volatility * 1.5); 
+                const move = price * changePercent;
+                const close = price;
+                const open = price - move; 
+                const bodyMax = Math.max(open, close);
+                const bodyMin = Math.min(open, close);
+                const high = bodyMax + (Math.random() * (price * 0.01));
+                const low = bodyMin - (Math.random() * (price * 0.01));
+                candles.push({ day: days - 1 - i, date: formatDate(i), open, high, low, close });
+                price = open; 
+            }
+            return candles.reverse();
+        };
+
+        const calculateRiskReward = (asset, currentVix) => {
+            const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
+            const rsi = calculateRSI(asset.candles || []);
+            let score = 50;
+            let signal = 'HOLD';
+            let color = 'text-gray-400';
+            let bg = 'bg-gray-800';
+
+            if (pctDown >= 5) score += 5;
+            if (pctDown >= 10) score += 10;
+            if (pctDown >= 20) score += 15;
+            if (pctDown >= 30) score += 20;
+            if (pctDown >= 50) score += 30;
+
+            if (rsi < 30) score += 20;     
+            if (rsi < 40) score += 10;
+            if (currentVix > 20) score += 10;
+
+            if (score >= 85) { signal = 'STRONG BUY'; color = 'text-green-400'; bg = 'bg-green-900/40'; }
+            else if (score >= 70) { signal = 'ACCUMULATE'; color = 'text-green-300'; bg = 'bg-green-900/20'; }
+            else if (score <= 30) { signal = 'WAIT'; color = 'text-yellow-500'; bg = 'bg-yellow-900/20'; } 
+            else if (score >= 60) { signal = 'WATCH'; color = 'text-blue-400'; bg = 'bg-blue-900/20'; }
             
-            // Parallel Requests
-            const [eodRes, tickerRes] = await Promise.all([
-                fetch(`${MARKETSTACK_BASE_URL}/eod?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`),
-                fetch(`${MARKETSTACK_BASE_URL}/tickers?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`)
-            ]);
+            return { signal, color, bg, score, rsi };
+        };
 
-            if (eodRes.ok) {
-                const eodJson = await eodRes.json();
-                marketstackData = eodJson.data || []; 
+        // --- INITIALIZATION ---
+        const init = () => {
+            // Load Base Data (No API Call initially)
+            state.allAssets = BASE_POOL.map(base => ({
+                ...base,
+                candles: generateHistoryFromPrice(base.price, base.volatility, 90)
+            }));
+            render();
+        };
+
+        // --- CORE FUNCTIONS ---
+        
+        async function fetchData() {
+            updateState({ isRefreshing: true, apiStatus: 'fetching...' });
+            
+            try {
+                // 1. BTC
+                const btcRes = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin');
+                const btcData = await btcRes.json();
+                const realBtc = btcData[0] ? { price: btcData[0].current_price, ath: btcData[0].ath, marketCap: btcData[0].market_cap/1e9 } : null;
+
+                // 2. Stocks Batch
+                const symbols = BASE_POOL.filter(a => a.type === 'stock').map(a => a.symbol).join(',');
+                let marketstackData = [];
+                let tickersData = [];
+                
+                try {
+                    const [eodRes, tickerRes] = await Promise.all([
+                        fetch(`${MARKETSTACK_BASE_URL}/eod?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`),
+                        fetch(`${MARKETSTACK_BASE_URL}/tickers?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`)
+                    ]);
+                    
+                    if (eodRes.ok) {
+                        const eodJson = await eodRes.json();
+                        marketstackData = eodJson.data || [];
+                        state.apiStatus = 'online (v2)';
+                    } else {
+                        state.apiStatus = 'offline (api error)';
+                    }
+                    
+                    if (tickerRes.ok) {
+                        const tickerJson = await tickerRes.json();
+                        tickersData = tickerJson.data || [];
+                    }
+                } catch(e) {
+                    console.warn("Marketstack error:", e);
+                    state.apiStatus = 'offline (mixed content)';
+                }
+
+                // 3. Update State
+                const newAssets = state.allAssets.map(asset => {
+                    let freshPrice = asset.price;
+                    let freshMC = asset.marketCap;
+                    let freshName = asset.name;
+                    let freshATH = asset.ath;
+
+                    // BTC Update
+                    if(asset.symbol === 'BTC' && realBtc) {
+                        freshPrice = realBtc.price;
+                        freshMC = realBtc.marketCap;
+                        freshATH = realBtc.ath;
+                    }
+
+                    // Stock Update
+                    const apiStock = marketstackData.find(i => i.symbol === asset.symbol);
+                    if (apiStock) {
+                        freshPrice = apiStock.close;
+                        // Est market cap
+                        const baseAsset = BASE_POOL.find(b => b.symbol === asset.symbol);
+                        if(baseAsset) {
+                            freshMC = baseAsset.marketCap * (freshPrice / baseAsset.price);
+                        }
+                        if(freshPrice > freshATH) freshATH = freshPrice;
+                    }
+                    
+                    const apiTicker = tickersData.find(i => i.symbol === asset.symbol);
+                    if(apiTicker) freshName = apiTicker.name;
+
+                    // Update Chart
+                    let newCandles = asset.candles;
+                    if(freshPrice !== asset.price) {
+                         newCandles = [...asset.candles];
+                         const last = newCandles[newCandles.length - 1];
+                         newCandles[newCandles.length - 1] = {
+                             ...last,
+                             close: freshPrice,
+                             high: Math.max(last.high, freshPrice),
+                             low: Math.min(last.low, freshPrice)
+                         };
+                    }
+
+                    return { 
+                        ...asset, 
+                        price: freshPrice, 
+                        marketCap: freshMC, 
+                        name: freshName,
+                        ath: freshATH,
+                        candles: newCandles 
+                    };
+                });
+
+                updateState({ allAssets: newAssets, lastUpdated: new Date(), isRefreshing: false });
+
+            } catch (err) {
+                console.error(err);
+                updateState({ isRefreshing: false, apiStatus: 'error' });
             }
-            if (tickerRes.ok) {
-                const tickerJson = await tickerRes.json();
-                tickersData = tickerJson.data || [];
-            }
-
-            setApiStatus('online (v2)');
-
-        } catch (msError) {
-            console.warn("Marketstack fetch failed (Mixed Content/CORS):", msError);
-            setApiStatus('offline (fallback)');
         }
 
-        // 3. Update State & Re-Calculate
-        setAllAssets(prevAssets => {
-            return prevAssets.map(asset => {
-                let freshPrice = asset.price; 
-                let freshMC = asset.marketCap;
-                let freshName = asset.name;
-                let freshATH = asset.ath;
+        function getSortedAssets() {
+            const indices = state.allAssets.filter(a => a.alwaysShow);
+            const stocks = state.allAssets.filter(a => !a.alwaysShow && a.type === 'stock');
+            let ranked = [];
 
-                // Apply BTC
-                if (asset.symbol === 'BTC' && realBtc) {
-                    freshPrice = realBtc.price;
-                    freshMC = realBtc.marketCap;
-                }
-
-                // Apply Stock API Data (Price)
-                const apiStock = marketstackData.find(item => item.symbol === asset.symbol);
-                if (apiStock) {
-                    freshPrice = apiStock.close; 
-                    // Estimate new Market Cap based on price drift vs our config base
-                    const baseAsset = BASE_POOL.find(b => b.symbol === asset.symbol);
-                    if (baseAsset) {
-                        const ratio = freshPrice / baseAsset.price;
-                        freshMC = baseAsset.marketCap * ratio;
-                    }
-                    // Update ATH if new price is higher
-                    if (freshPrice > freshATH) {
-                        freshATH = freshPrice;
-                    }
-                } 
-                
-                // Apply Ticker Metadata (Name) if available
-                const apiTicker = tickersData.find(item => item.symbol === asset.symbol);
-                if (apiTicker) {
-                    freshName = apiTicker.name;
-                }
-                
-                // Update if changed
-                if (freshPrice !== asset.price) {
-                    const newCandles = [...asset.candles];
-                    const lastIdx = newCandles.length - 1;
-                    newCandles[lastIdx] = {
-                        ...newCandles[lastIdx],
-                        close: freshPrice,
-                        high: Math.max(newCandles[lastIdx].high, freshPrice),
-                        low: Math.min(newCandles[lastIdx].low, freshPrice)
-                    };
-                    return { ...asset, name: freshName, price: freshPrice, ath: freshATH, marketCap: freshMC, candles: newCandles };
-                }
-                return asset;
-            });
-        });
-        
-        setVix(VIX_BASE); // Note: Ideally fetch VIX too if API supports it
-        setLastUpdated(new Date());
-        setIsRefreshing(false);
-
-    } catch (e) {
-        console.error("General Refresh Error", e);
-        setIsRefreshing(false);
-        setApiStatus('error');
-    }
-  };
-
-  const addToPortfolio = (e) => {
-      e.preventDefault();
-      const { symbol, amount } = portfolioInput;
-      if (!symbol || !amount) return;
-      const amt = parseFloat(amount);
-      const currentAsset = allAssets.find(a => a.symbol === symbol); 
-      if (!currentAsset) { alert("Asset not found."); return; }
-      const price = currentAsset.price;
-      const newShares = amt / price;
-      setPortfolio(prev => {
-          const existing = prev.find(p => p.symbol === symbol);
-          if (existing) {
-              const totalShares = existing.shares + newShares;
-              const totalInvested = existing.invested + amt;
-              return prev.map(p => p.symbol === symbol ? { ...p, shares: totalShares, invested: totalInvested, avgCost: totalInvested / totalShares } : p);
-          } else {
-              return [...prev, { symbol, shares: newShares, invested: amt, avgCost: price }];
-          }
-      });
-      setPortfolioInput({ symbol: '', amount: '' });
-  };
-
-  const removeFromPortfolio = (symbol) => {
-      setPortfolio(prev => prev.filter(p => p.symbol !== symbol));
-  };
-
-  // --- STRATEGY ENGINE ---
-  const calculateRiskReward = (asset, currentVix) => {
-    const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
-    const rsi = calculateRSI(asset.candles ? [...asset.candles].reverse() : [], 14);
-    let score = 50;
-    let signal = 'HOLD';
-    let color = 'text-gray-400';
-    let bg = 'bg-gray-800';
-
-    if (pctDown >= 5 && pctDown < 10) score += 5;
-    if (pctDown >= 10 && pctDown < 15) score += 10;
-    if (pctDown >= 15 && pctDown < 20) score += 15;
-    if (pctDown >= 20 && pctDown < 25) score += 25;
-    if (pctDown >= 25 && pctDown < 30) score += 35;
-    if (pctDown >= 30 && pctDown < 35) score += 45;
-    if (pctDown >= 35 && pctDown < 40) score += 55;
-    if (pctDown >= 40 && pctDown < 45) score += 65;
-    if (pctDown >= 50) score += 80; 
-    if (rsi < 30) score += 20;     
-    if (rsi < 40) score += 10;
-    if (currentVix > 20) score += 10;
-
-    if (score >= 85) { signal = 'STRONG BUY'; color = 'text-green-400'; bg = 'bg-green-900/40'; }
-    else if (score >= 70) { signal = 'ACCUMULATE'; color = 'text-green-300'; bg = 'bg-green-900/20'; }
-    else if (score <= 30) { signal = 'WAIT'; color = 'text-yellow-500'; bg = 'bg-yellow-900/20'; } 
-    else if (score >= 60) { signal = 'WATCH'; color = 'text-blue-400'; bg = 'bg-blue-900/20'; }
-    else { signal = 'HOLD'; color = 'text-gray-500'; bg = 'bg-gray-800'; }
-
-    return { signal, color, bg, score, rsi };
-  };
-
-  const displayedAssets = useMemo(() => {
-      const indices = allAssets.filter(a => a.alwaysShow);
-      const stocks = allAssets.filter(a => !a.alwaysShow && a.type === 'stock');
-      
-      let rankedStocks = [];
-      if (strategy === 'hybrid') {
-          rankedStocks = stocks.map(s => ({
-              ...s,
-              score: s.marketCap * (Math.max(((s.ath - s.price)/s.ath)*100, 0) + 5)
-          })).sort((a, b) => b.score - a.score);
-      } else if (strategy === 'marketCap') {
-          rankedStocks = stocks.sort((a, b) => b.marketCap - a.marketCap);
-      } else if (strategy === 'drawdown') {
-          rankedStocks = stocks.sort((a, b) => {
-             const aDown = ((a.ath - a.price)/a.ath);
-             const bDown = ((b.ath - b.price)/b.ath);
-             return bDown - aDown;
-          });
-      } else if (strategy === 'action') {
-          rankedStocks = stocks.sort((a, b) => b.volatility - a.volatility);
-      }
-      const top15 = rankedStocks.slice(0, 15);
-      const combined = [...indices, ...top15];
-
-      if (sortConfig.key !== null) {
-          combined.sort((a, b) => {
-            let aValue, bValue;
-            if (sortConfig.key === 'pctDown') {
-                aValue = ((a.ath - a.price) / a.ath) * 100;
-                bValue = ((b.ath - b.price) / b.ath) * 100;
-            } else if (sortConfig.key === 'rsi') {
-                aValue = calculateRiskReward(a, vix).rsi;
-                bValue = calculateRiskReward(b, vix).rsi;
-            } else {
-                aValue = a[sortConfig.key];
-                bValue = b[sortConfig.key];
+            if (state.strategy === 'hybrid') {
+                ranked = stocks.map(s => ({
+                    ...s,
+                    score: s.marketCap * (Math.max(((s.ath - s.price)/s.ath)*100, 0) + 5)
+                })).sort((a, b) => b.score - a.score);
+            } else if (state.strategy === 'marketCap') {
+                ranked = stocks.sort((a, b) => b.marketCap - a.marketCap);
+            } else if (state.strategy === 'drawdown') {
+                ranked = stocks.sort((a, b) => ((b.ath - b.price)/b.ath) - ((a.ath - a.price)/a.ath));
+            } else if (state.strategy === 'action') {
+                ranked = stocks.sort((a, b) => b.volatility - a.volatility);
             }
-            if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
-          });
-      }
-      return combined;
-  }, [allAssets, strategy, sortConfig, vix]);
 
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
-    setSortConfig({ key, direction });
-  };
+            let combined = [...indices, ...ranked.slice(0, 15)];
 
-  const SortIcon = ({ column }) => {
-      if (sortConfig.key !== column) return <ChevronsUpDown size={12} className="text-gray-600 ml-1" />;
-      return sortConfig.direction === 'asc' ? <ArrowUp size={12} className="text-blue-400 ml-1" /> : <ArrowDown size={12} className="text-blue-400 ml-1" />;
-  };
+            // Column Sorting
+            if (state.sortConfig.key) {
+                combined.sort((a, b) => {
+                    let aVal, bVal;
+                    if(state.sortConfig.key === 'pctDown') {
+                        aVal = ((a.ath - a.price)/a.ath); bVal = ((b.ath - b.price)/b.ath);
+                    } else if(state.sortConfig.key === 'rsi') {
+                        aVal = calculateRiskReward(a, state.vix).rsi;
+                        bVal = calculateRiskReward(b, state.vix).rsi;
+                    } else {
+                        aVal = a[state.sortConfig.key]; bVal = b[state.sortConfig.key];
+                    }
+                    if (aVal < bVal) return state.sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return state.sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+            return combined;
+        }
 
-  const AlgoLegend = () => (
-    <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs bg-[#0e0e0e] p-4 rounded-lg border border-gray-800">
-        <div className="col-span-full mb-2 font-bold text-sm text-gray-400 flex items-center gap-2"><Info size={16} /> LONG TERM STRATEGY DECODER</div>
-        <div className="p-3 bg-green-900/10 border border-green-900/30 rounded">
-            <div className="font-bold text-green-400 mb-1">STRONG BUY / ACCUMULATE</div>
-            <ul className="list-disc pl-3 space-y-1 text-gray-500">
-                <li><span className="text-white font-bold">Deep Value:</span> Price {'>'} 20% below ATH.</li>
-                <li><span className="text-white font-bold">RSI Oversold:</span> &lt; 30. Good for DCA entry.</li>
-            </ul>
-        </div>
-        <div className="p-3 bg-blue-900/10 border border-blue-900/30 rounded">
-            <div className="font-bold text-blue-400 mb-1">WATCH / HOLD</div>
-            <ul className="list-disc pl-3 space-y-1 text-gray-500">
-                <li>Standard accumulation zone.</li>
-                <li>Price is stable or slowly uptrending.</li>
-            </ul>
-        </div>
-        <div className="p-3 bg-yellow-900/10 border border-yellow-900/30 rounded">
-            <div className="font-bold text-yellow-400 mb-1">WAIT</div>
-            <div className="text-gray-500 mt-1">Price near ATH. Wait for a pullback.</div>
-        </div>
-    </div>
-  );
+        function updateState(newState) {
+            Object.assign(state, newState);
+            render();
+        }
 
-  const MarketPulse = () => (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <FearGreedWidget data={fearGreed} />
-          <div className="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg flex flex-col justify-between">
-              <div>
-                  <h3 className="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><Activity size={14} /> Volatility (VIX)</h3>
-                  <div className={`text-2xl font-black mt-1 ${vix > 20 ? 'text-red-500' : 'text-blue-400'}`}>{vix.toFixed(2)}</div>
-              </div>
-              <div className="text-xs text-gray-500 mt-2">{vix > 20 ? "High volatility. Markets are fearful." : "Markets are relatively calm."}</div>
-          </div>
-          <div className="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg flex flex-col justify-between">
-              <div>
-                  <h3 className="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><Zap size={14} /> Daily Insight</h3>
-                  <div className="text-sm font-medium text-white mt-1 leading-snug">Fear & Greed is at <span className="text-red-400 font-bold">{fearGreed.value}</span>.</div>
-              </div>
-              <div className="text-[10px] text-gray-500 mt-2">Extreme Fear often signals a good buying opportunity.</div>
-          </div>
-      </div>
-  );
+        // --- RENDERING ---
 
-  const StrategySelector = () => (
-      <div className="flex flex-wrap gap-2 mb-4 p-1 bg-[#0e0e0e] border border-gray-800 rounded-lg w-fit">
-          <button onClick={() => setStrategy('hybrid')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-2 transition-colors ${strategy === 'hybrid' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}><Layers size={14} /> Hybrid (Value)</button>
-          <button onClick={() => setStrategy('marketCap')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-2 transition-colors ${strategy === 'marketCap' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}><DollarSign size={14} /> Market Cap</button>
-          <button onClick={() => setStrategy('drawdown')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-2 transition-colors ${strategy === 'drawdown' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}><TrendingDown size={14} /> Deep Value</button>
-          <button onClick={() => setStrategy('action')} className={`px-3 py-1.5 text-xs font-bold rounded flex items-center gap-2 transition-colors ${strategy === 'action' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}><Activity size={14} /> High Action</button>
-      </div>
-  );
+        // SVG Charts in HTML
+        function renderCandleChartSVG(data, width) {
+            if(!data || data.length === 0) return '';
+            const height = 300, padding = 20;
+            const allHighs = data.map(d => d.high);
+            const allLows = data.map(d => d.low);
+            const maxPrice = Math.max(...allHighs);
+            const minPrice = Math.min(...allLows);
+            const priceRange = maxPrice - minPrice || 1;
+            const candleWidth = (width - (padding * 2)) / data.length;
+            const barWidth = Math.max(1, candleWidth * 0.6);
+            
+            const getY = (p) => height - padding - ((p - minPrice) / priceRange) * (height - (padding * 2));
+            const getX = (i) => padding + (i * candleWidth);
 
-  const PortfolioView = () => {
-      let totalInvested = 0;
-      let totalValue = 0;
-      const enrichedPortfolio = portfolio.map(item => {
-          const assetData = allAssets.find(a => a.symbol === item.symbol);
-          const currentPrice = assetData ? assetData.price : item.avgCost;
-          const currentValue = item.shares * currentPrice;
-          const pl = currentValue - item.invested;
-          const plPct = (pl / item.invested) * 100;
-          totalInvested += item.invested;
-          totalValue += currentValue;
-          return { ...item, currentPrice, currentValue, pl, plPct };
-      });
-      const totalPL = totalValue - totalInvested;
-      const totalPLPct = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
+            let paths = '';
+            data.forEach((c, i) => {
+                const x = getX(i);
+                const color = c.close >= c.open ? '#22c55e' : '#ef4444';
+                const wickX = x + barWidth / 2;
+                let bodyH = Math.abs(getY(c.close) - getY(c.open));
+                if(bodyH < 1) bodyH = 1;
+                const bodyY = Math.min(getY(c.open), getY(c.close));
+                
+                paths += `<line x1="${wickX}" y1="${getY(c.high)}" x2="${wickX}" y2="${getY(c.low)}" stroke="${color}" stroke-width="1"></line>`;
+                paths += `<rect x="${x}" y="${bodyY}" width="${barWidth}" height="${bodyH}" fill="${color}"></rect>`;
+            });
+            
+            return `
+                <div class="w-full h-[350px] bg-[#0e0e0e] rounded-lg border border-gray-800 relative select-none group">
+                  <div class="absolute right-2 top-2 text-xs text-gray-500">${formatCurrency(maxPrice)}</div>
+                  <div class="absolute right-2 bottom-2 text-xs text-gray-500">${formatCurrency(minPrice)}</div>
+                  <svg width="100%" height="100%" class="overflow-visible">${paths}</svg>
+                </div>
+            `;
+        }
 
-      return (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <div className="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg">
-                      <div className="text-gray-500 text-xs uppercase mb-1">Total Invested</div>
-                      <div className="text-3xl font-mono text-white">{formatCurrency(totalInvested)}</div>
-                  </div>
-                  <div className="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg">
-                      <div className="text-gray-500 text-xs uppercase mb-1">Current Value</div>
-                      <div className="text-3xl font-mono text-blue-400">{formatCurrency(totalValue)}</div>
-                  </div>
-                  <div className="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg">
-                      <div className="text-gray-500 text-xs uppercase mb-1">Total Profit/Loss</div>
-                      <div className={`text-3xl font-mono ${totalPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>{totalPL >= 0 ? '+' : ''}{formatCurrency(totalPL)} <span className="text-lg">({totalPLPct.toFixed(2)}%)</span></div>
-                  </div>
-              </div>
-              <div className="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg mb-8">
-                  <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2"><Plus size={16} /> Add Investment (DCA)</h3>
-                  <form onSubmit={addToPortfolio} className="flex gap-4 items-end">
-                      <div className="flex-1">
-                          <label className="block text-xs text-gray-500 mb-1">Asset Symbol</label>
-                          <select className="w-full bg-black border border-gray-700 text-white rounded px-3 py-2 text-sm focus:border-blue-500 outline-none" value={portfolioInput.symbol} onChange={(e) => setPortfolioInput({...portfolioInput, symbol: e.target.value})}>
-                              <option value="">Select Asset</option>
-                              {BASE_POOL.map(a => <option key={a.symbol} value={a.symbol}>{a.symbol} - {a.name}</option>)}
-                          </select>
-                      </div>
-                      <div className="flex-1">
-                          <label className="block text-xs text-gray-500 mb-1">Amount to Invest ($)</label>
-                          <input type="number" className="w-full bg-black border border-gray-700 text-white rounded px-3 py-2 text-sm focus:border-blue-500 outline-none" placeholder="e.g. 5000" value={portfolioInput.amount} onChange={(e) => setPortfolioInput({...portfolioInput, amount: e.target.value})}/>
-                      </div>
-                      <button type="submit" className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-bold rounded">Buy / Add</button>
-                  </form>
-              </div>
-              <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                      <thead>
-                          <tr className="text-gray-500 text-xs uppercase border-b border-gray-800">
-                              <th className="p-4">Asset</th>
-                              <th className="p-4 text-right">Shares</th>
-                              <th className="p-4 text-right">Avg Cost</th>
-                              <th className="p-4 text-right">Current Price</th>
-                              <th className="p-4 text-right">Value</th>
-                              <th className="p-4 text-right">Return</th>
-                              <th className="p-4 text-center">Action</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {enrichedPortfolio.length === 0 ? (
-                              <tr><td colSpan="7" className="p-8 text-center text-gray-500">No assets in portfolio yet.</td></tr>
-                          ) : (
-                              enrichedPortfolio.map(item => (
-                                  <tr key={item.symbol} className="border-b border-gray-800 hover:bg-[#111]">
-                                      <td className="p-4 font-bold text-white">{item.symbol}</td>
-                                      <td className="p-4 text-right text-gray-400 font-mono">{item.shares.toFixed(4)}</td>
-                                      <td className="p-4 text-right text-gray-400 font-mono">{formatCurrency(item.avgCost)}</td>
-                                      <td className="p-4 text-right text-white font-mono">{formatCurrency(item.currentPrice)}</td>
-                                      <td className="p-4 text-right text-blue-300 font-mono">{formatCurrency(item.currentValue)}</td>
-                                      <td className={`p-4 text-right font-mono font-bold ${item.pl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{item.pl >= 0 ? '+' : ''}{formatCurrency(item.pl)} <br/><span className="text-xs font-normal opacity-80">{item.plPct.toFixed(2)}%</span></td>
-                                      <td className="p-4 text-center"><button onClick={() => removeFromPortfolio(item.symbol)} className="text-red-500 hover:text-red-400 p-2"><Trash2 size={14} /></button></td>
-                                  </tr>
-                              ))
-                          )}
-                      </tbody>
-                  </table>
-              </div>
-          </div>
-      );
-  };
+        function renderMiniChart(data, color) {
+             const width = 80, height = 30;
+             const prices = data.map(c => c.close);
+             const min = Math.min(...prices);
+             const max = Math.max(...prices);
+             const range = max - min || 1;
+             const points = prices.slice(-15).map((p, i) => {
+                 const x = (i / 14) * width;
+                 const y = height - ((p - min) / range) * height;
+                 return `${x},${y}`;
+             }).join(' ');
+             return `<svg width="${width}" height="${height}" class="overflow-visible"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>`;
+        }
 
-  return (
-    <div className="min-h-screen bg-black text-gray-200 font-sans selection:bg-blue-500 selection:text-white">
-      <div className="h-14 border-b border-gray-800 flex items-center justify-between px-6 bg-[#050505] sticky top-0 z-50">
-        <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('dashboard')}>
-                <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center font-bold text-xs text-white">PT</div>
-                <span className="font-bold text-lg tracking-tight text-white">PRO<span className="text-blue-500">TRADER</span></span>
-            </div>
-            <div className="hidden md:flex gap-1">
-                <button onClick={() => setView('dashboard')} className={`px-4 py-1.5 rounded text-xs font-bold transition-all ${view === 'dashboard' || view === 'detail' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}>SCANNER</button>
-                <button onClick={() => setView('portfolio')} className={`px-4 py-1.5 rounded text-xs font-bold transition-all flex items-center gap-2 ${view === 'portfolio' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}>PORTFOLIO</button>
-            </div>
-        </div>
-        <div className="flex items-center gap-6">
-           <div className="flex items-center gap-3">
-               <div className="hidden md:block text-right">
-                   <div className="text-[10px] text-gray-500 uppercase">Last Update</div>
-                   <div className="text-xs font-bold text-white">{lastUpdated.toLocaleTimeString()}</div>
-               </div>
-               <div className="flex flex-col items-end">
-                 <button onClick={handleRefresh} disabled={isRefreshing} className={`flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-colors shadow-[0_0_10px_rgba(37,99,235,0.4)] ${isRefreshing ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                    <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> {isRefreshing ? 'CHECKING...' : 'REFRESH DATA'}
-                 </button>
-                 <div className="text-[9px] mt-1 text-gray-600 flex items-center gap-1">API: <span className={apiStatus.includes('online') ? 'text-green-500' : 'text-orange-500'}>{apiStatus}</span></div>
-               </div>
-           </div>
-        </div>
-      </div>
-      <div className="max-w-7xl mx-auto p-6">
-        {view === 'portfolio' ? (
-            <div className="space-y-6">
-                <div className="flex items-end justify-between">
+        function renderDashboard() {
+            const assets = getSortedAssets();
+            
+            let html = `
+            <div class="space-y-6 animate-in fade-in">
+                <div class="flex justify-between items-end">
                     <div>
-                        <h2 className="text-2xl font-bold text-white mb-1">Long Term Portfolio</h2>
-                        <p className="text-gray-500 text-sm">Track dollar cost averaging performance over 5-6 years.</p>
+                        <h2 class="text-2xl font-bold text-white mb-1">Daily Scanner</h2>
+                        <p class="text-gray-500 text-sm">Scanning 50+ stocks. Showing Top 15 based on ${state.strategy}.</p>
                     </div>
+                    <div class="text-xs font-mono text-gray-500 flex items-center gap-2"><i data-lucide="clock" class="w-3 h-3"></i> DATA: ${state.lastUpdated.toLocaleTimeString()}</div>
                 </div>
-                <PortfolioView />
+                
+                ${renderMarketPulse()}
+                ${renderStrategySelector()}
+
+                <div class="bg-[#0e0e0e] border border-gray-800 rounded-lg overflow-hidden shadow-2xl overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="text-gray-500 text-xs uppercase border-b border-gray-800">
+                                <th class="p-4 cursor-pointer hover:text-white" onclick="setSort('symbol')">Asset</th>
+                                <th class="p-4 text-right cursor-pointer hover:text-white" onclick="setSort('price')">Price</th>
+                                <th class="p-4 text-right hidden sm:table-cell cursor-pointer hover:text-white" onclick="setSort('marketCap')">Mkt Cap</th>
+                                <th class="p-4 text-right hidden md:table-cell cursor-pointer hover:text-white" onclick="setSort('pctDown')">% Down</th>
+                                <th class="p-4 text-center cursor-pointer hover:text-white" onclick="setSort('rsi')">RSI (14)</th>
+                                <th class="p-4 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${assets.map(asset => {
+                                const analysis = calculateRiskReward(asset, state.vix);
+                                const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
+                                const isGreen = asset.price >= asset.candles[asset.candles.length-2].close;
+                                return `
+                                <tr class="border-b border-gray-800 hover:bg-[#111] cursor-pointer transition-colors" onclick="selectAsset('${asset.symbol}')">
+                                    <td class="p-4 font-bold text-white flex items-center gap-3">
+                                        <div class="w-1 h-8 ${analysis.color.replace('text-', 'bg-')}"></div>
+                                        <div>
+                                            <div class="text-base">${asset.symbol}</div>
+                                            <div class="text-[10px] text-gray-500 font-normal uppercase">${asset.name}</div>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-right font-mono text-base ${isGreen ? 'text-green-400' : 'text-red-400'}">${formatCurrency(asset.price)}</td>
+                                    <td class="p-4 text-right text-gray-400 font-mono text-sm hidden sm:table-cell">${formatMarketCap(asset.marketCap)}</td>
+                                    <td class="p-4 text-right font-bold text-white hidden md:table-cell">
+                                        <span class="text-xs px-2 py-1 rounded border ${pctDown > 10 ? 'border-red-900 bg-red-900/20 text-red-400' : 'border-gray-700 bg-gray-800'}">-${pctDown.toFixed(2)}%</span>
+                                    </td>
+                                    <td class="p-4 text-center font-mono text-sm">
+                                        <span class="${analysis.rsi < 30 ? 'text-green-400 font-bold' : analysis.rsi > 70 ? 'text-red-400 font-bold' : 'text-gray-500'}">${analysis.rsi.toFixed(0)}</span>
+                                    </td>
+                                    <td class="p-4 text-center">
+                                        <span class="text-[10px] font-bold px-3 py-1 rounded-full ${analysis.color} ${analysis.bg}">${analysis.signal}</span>
+                                    </td>
+                                </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                    ${renderAlgoLegend()}
+                </div>
+            </div>`;
+            return html;
+        }
+
+        function renderMarketPulse() {
+            const { value } = state.fearGreed;
+            let color = value < 25 ? 'text-red-500' : value < 45 ? 'text-orange-400' : value > 75 ? 'text-green-500' : 'text-green-300';
+            
+            return `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg">
+                    <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="gauge" class="w-4 h-4"></i> Fear & Greed</h3>
+                    <div class="text-2xl font-black mt-1 ${color}">${value} <span class="text-xs text-gray-400 font-medium">${state.fearGreed.status}</span></div>
+                </div>
+                <div class="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg">
+                    <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="activity" class="w-4 h-4"></i> VIX (Volatility)</h3>
+                    <div class="text-2xl font-black mt-1 ${state.vix > 20 ? 'text-red-500' : 'text-blue-400'}">${state.vix.toFixed(2)}</div>
+                    <div class="text-xs text-gray-500 mt-2">${state.vix > 20 ? "High Volatility" : "Stable Market"}</div>
+                </div>
+                <div class="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg">
+                     <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4"></i> Insight</h3>
+                     <div class="text-sm font-medium text-white mt-1">Extreme Fear often signals a buying opportunity.</div>
+                </div>
             </div>
-        ) : view === 'detail' ? (
-            <div className="animate-in fade-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between mb-6">
-                    <button onClick={() => { setSelectedAsset(null); setView('dashboard'); }} className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm font-bold uppercase tracking-widest"><ArrowLeft size={16} /> Back to Scanner</button>
-                    <div className="flex items-center gap-2 text-xs text-gray-500"><Wifi size={12} className={isRefreshing ? 'animate-ping text-blue-500' : 'text-green-500'} /> STATUS: <span className="text-white font-bold uppercase">LIVE</span></div>
+            `;
+        }
+
+        function renderStrategySelector() {
+            const btns = [
+                { id: 'hybrid', label: 'Hybrid (Value)', icon: 'layers' },
+                { id: 'marketCap', label: 'Market Cap', icon: 'dollar-sign' },
+                { id: 'drawdown', label: 'Deep Value', icon: 'trending-down' },
+                { id: 'action', label: 'High Action', icon: 'activity' }
+            ];
+            return `
+            <div class="flex flex-wrap gap-2 mb-4 p-1 bg-[#0e0e0e] border border-gray-800 rounded-lg w-fit">
+                ${btns.map(b => `
+                    <button onclick="setStrategy('${b.id}')" class="px-3 py-1.5 text-xs font-bold rounded flex items-center gap-2 transition-colors ${state.strategy === b.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}">
+                        <i data-lucide="${b.icon}" class="w-3 h-3"></i> ${b.label}
+                    </button>
+                `).join('')}
+            </div>
+            `;
+        }
+
+        function renderAlgoLegend() {
+            return `
+            <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs border-t border-gray-800">
+                 <div class="p-3 bg-green-900/10 border border-green-900/30 rounded">
+                    <div class="font-bold text-green-400">STRONG BUY</div>
+                    <div class="text-gray-500">Price > 20% below ATH + RSI < 30.</div>
+                 </div>
+                 <div class="p-3 bg-blue-900/10 border border-blue-900/30 rounded">
+                    <div class="font-bold text-blue-400">WATCH / HOLD</div>
+                    <div class="text-gray-500">Stable trend, good for accumulation.</div>
+                 </div>
+                 <div class="p-3 bg-yellow-900/10 border border-yellow-900/30 rounded">
+                    <div class="font-bold text-yellow-400">WAIT</div>
+                    <div class="text-gray-500">Price near highs. Wait for pullback.</div>
+                 </div>
+            </div>`;
+        }
+
+        function renderDetail() {
+            const asset = state.allAssets.find(a => a.symbol === state.selectedAsset);
+            if(!asset) return '';
+            
+            const analysis = calculateRiskReward(asset, state.vix);
+            const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
+            const prevClose = asset.candles[asset.candles.length-2].close;
+            
+            // Visual Bar for ATH
+            const pct = Math.min(pctDown, 100);
+            const barColor = 'linear-gradient(90deg, #4b5563 0%, #ef4444 50%, #22c55e 100%)';
+
+            return `
+            <div class="animate-in fade-in p-6 max-w-7xl mx-auto">
+                <div class="flex items-center justify-between mb-6">
+                    <button onclick="updateState({view: 'dashboard', selectedAsset: null})" class="flex items-center gap-2 text-gray-400 hover:text-white text-sm font-bold uppercase"><i data-lucide="arrow-left" class="w-4 h-4"></i> Back</button>
+                    <div class="text-xs text-green-500 flex items-center gap-2"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> LIVE VIEW</div>
                 </div>
-                {selectedAsset && (() => {
-                    const liveAsset = allAssets.find(a => a.symbol === selectedAsset.symbol) || selectedAsset;
-                    const pctDown = ((liveAsset.ath - liveAsset.price) / liveAsset.ath) * 100;
-                    const analysis = calculateRiskReward(liveAsset, vix);
-                    const prevClose = liveAsset.candles[liveAsset.candles.length-2]?.close || liveAsset.price;
-                    const isGreen = liveAsset.price >= prevClose;
-                    return (
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                            <div className="lg:col-span-8 space-y-4">
-                                <div className="bg-[#0e0e0e] p-6 rounded-lg border border-gray-800 flex justify-between items-end">
-                                    <div>
-                                        <h1 className="text-3xl font-bold text-white flex items-center gap-3">{liveAsset.symbol} <span className="text-sm font-normal text-gray-500 border border-gray-700 px-2 rounded bg-black">{liveAsset.type}</span></h1>
-                                        <p className="text-gray-400 text-sm mt-1">{liveAsset.name}</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="text-xs text-gray-500 uppercase mb-1">Current Price</div>
-                                        <div className={`text-4xl font-mono font-bold ${isGreen ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(liveAsset.price)}</div>
-                                        <div className={`text-sm font-mono mt-1 ${isGreen ? 'text-green-400' : 'text-red-400'}`}>{isGreen ? '+' : ''}{(liveAsset.price - prevClose).toFixed(2)} vs Prev Day</div>
-                                    </div>
-                                </div>
-                                <div className="bg-[#0e0e0e] rounded-lg border border-gray-800 p-4">
-                                <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
-                                    <div className="text-xs font-bold text-gray-500 uppercase">Daily Chart (Last 90 Days)</div>
-                                    <div className="text-xs text-gray-600">Calculated Trend</div>
-                                </div>
-                                <CandleChart data={liveAsset.candles} />
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <div class="lg:col-span-8 space-y-4">
+                         <div class="bg-[#0e0e0e] p-6 rounded-lg border border-gray-800 flex justify-between items-end">
+                            <div>
+                                <h1 class="text-3xl font-bold text-white flex items-center gap-3">${asset.symbol} <span class="text-sm font-normal text-gray-500 border border-gray-700 px-2 rounded bg-black">${asset.type}</span></h1>
+                                <p class="text-gray-400 text-sm mt-1">${asset.name}</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-4xl font-mono font-bold ${asset.price >= prevClose ? 'text-green-500' : 'text-red-500'}">${formatCurrency(asset.price)}</div>
+                            </div>
+                        </div>
+                        ${renderCandleChartSVG(asset.candles, 800)}
+                    </div>
+
+                    <div class="lg:col-span-4 space-y-4">
+                        <div class="p-6 rounded-lg border ${analysis.bg} ${analysis.color}">
+                            <div class="text-xs font-bold uppercase mb-1">Signal</div>
+                            <div class="text-4xl font-black">${analysis.signal}</div>
+                            <div class="text-xs opacity-70 mt-1">Score: ${analysis.score}/100</div>
+                        </div>
+
+                        <div class="bg-[#0e0e0e] border border-gray-800 rounded-lg p-5 space-y-6">
+                            <div>
+                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2">Key Levels</h3>
+                                <div class="flex justify-between text-sm mb-1"><span>ATH</span> <span class="font-mono text-white">${formatCurrency(asset.ath)}</span></div>
+                                <div class="flex justify-between text-sm"><span>Mkt Cap</span> <span class="font-mono text-white">${formatMarketCap(asset.marketCap)}</span></div>
+                            </div>
+
+                             <div>
+                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2">Discount Zone (${pctDown.toFixed(2)}% Down)</h3>
+                                <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative">
+                                    <div class="absolute top-0 bottom-0 w-full" style="background: ${barColor}"></div>
+                                    <div class="absolute top-0 bottom-0 w-1 bg-white" style="left: ${pct}%"></div>
                                 </div>
                             </div>
-                            <div className="lg:col-span-4 space-y-4">
-                                <div className={`p-6 rounded-lg border ${analysis.color === 'text-green-400' ? 'border-green-900 bg-green-900/10' : analysis.color === 'text-yellow-500' ? 'border-yellow-900 bg-yellow-900/10' : 'border-gray-800 bg-gray-900'}`}>
-                                    <div className="flex items-center gap-2 mb-3"><Activity size={18} className={analysis.color} /><span className="text-xs font-bold uppercase text-gray-400">Long Term Signal</span></div>
-                                    <div className={`text-4xl font-black ${analysis.color} mb-1`}>{analysis.signal}</div>
-                                    <div className="text-xs text-gray-500">Confidence Score: <span className="text-white">{analysis.score}/100</span></div>
-                                </div>
-                                <div className="bg-[#0e0e0e] border border-gray-800 rounded-lg p-5 space-y-6">
-                                    <div>
-                                        <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2"><BarChart2 size={14} /> Key Levels</h3>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-black p-3 rounded border border-gray-800"><div className="text-[10px] text-gray-500 uppercase">ATH</div><div className="text-white font-mono">{formatCurrency(liveAsset.ath)}</div></div>
-                                            <div className="bg-black p-3 rounded border border-gray-800"><div className="text-[10px] text-gray-500 uppercase">Market Cap</div><div className="text-white font-mono">{formatMarketCap(liveAsset.marketCap)}</div></div>
-                                        </div>
-                                    </div>
-                                    <div><h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Momentum (RSI)</h3><RSIIndicator rsi={analysis.rsi} /></div>
-                                    <div><h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Discount Zone</h3><ATHZoneIndicator pctDown={pctDown} /></div>
+                            
+                            <div>
+                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2">RSI (14): ${analysis.rsi.toFixed(1)}</h3>
+                                <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative">
+                                    <div class="absolute left-0 w-[30%] h-full bg-green-900/30"></div>
+                                    <div class="absolute right-0 w-[30%] h-full bg-red-900/30"></div>
+                                    <div class="absolute top-0 h-full w-2 bg-blue-500 rounded-full" style="left: ${analysis.rsi}%"></div>
                                 </div>
                             </div>
                         </div>
-                    );
-                })()}
-            </div>
-        ) : (
-          <div className="space-y-6">
-             <div className="flex items-end justify-between">
-                <div>
-                    <h2 className="text-2xl font-bold text-white mb-1">Daily Scanner</h2>
-                    <p className="text-gray-500 text-sm">Scanning top 50 US stocks. Showing {strategy === 'hybrid' ? 'Top 15 Value Opportunities' : strategy === 'marketCap' ? 'Top 15 Largest Companies' : strategy === 'drawdown' ? 'Top 15 Deepest Dips' : 'Top 15 High Action'}.</p>
+                    </div>
                 </div>
-                <div className="text-xs font-mono text-gray-500 flex items-center gap-2"><Clock size={12} /> DATA AS OF: 27 NOV 2025</div>
-             </div>
-             <MarketPulse />
-             <StrategySelector />
-             <div className="bg-[#0e0e0e] border border-gray-800 rounded-lg overflow-hidden shadow-2xl">
-                <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                    <tr className="text-gray-500 text-xs uppercase border-b border-gray-800">
-                        <th className="p-4 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('symbol')}><div className="flex items-center">Asset <SortIcon column="symbol" /></div></th>
-                        <th className="p-4 text-right cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('price')}><div className="flex items-center justify-end">Price <SortIcon column="price" /></div></th>
-                        <th className="p-4 text-right hidden sm:table-cell cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('marketCap')}><div className="flex items-center justify-end">Mkt Cap <SortIcon column="marketCap" /></div></th>
-                        <th className="p-4 text-right hidden md:table-cell cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('pctDown')}><div className="flex items-center justify-end">% Down <SortIcon column="pctDown" /></div></th>
-                        <th className="p-4 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('rsi')}><div className="flex items-center justify-center">RSI (14) <SortIcon column="rsi" /></div></th>
-                        <th className="p-4 text-center">Action</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {displayedAssets.map(asset => {
-                        const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
-                        const analysis = calculateRiskReward(asset, vix);
-                        const isGreen = asset.price >= asset.candles[asset.candles.length-2].close;
-                        return (
-                        <tr key={asset.symbol} onClick={() => handleAssetClick(asset)} className="border-b border-gray-800 hover:bg-[#111] cursor-pointer transition-colors group">
-                            <td className="p-4 font-bold text-white">
-                            <div className="flex items-center gap-3">
-                                <div className={`w-1 h-8 ${analysis.color.replace('text-', 'bg-')}`}></div>
-                                <div><div className="text-base group-hover:text-blue-400 transition-colors">{asset.symbol}</div><div className="text-[10px] text-gray-500 font-normal uppercase">{asset.name}</div></div>
-                            </div>
-                            </td>
-                            <td className={`p-4 text-right font-mono text-base ${isGreen ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(asset.price)}</td>
-                            <td className="p-4 text-right text-gray-400 font-mono text-sm hidden sm:table-cell">{formatMarketCap(asset.marketCap)}</td>
-                            <td className="p-4 text-right font-bold text-white hidden md:table-cell"><span className={`text-xs px-2 py-1 rounded border ${pctDown > 10 ? 'border-red-900 bg-red-900/20 text-red-400' : 'border-gray-700 bg-gray-800'}`}>-{pctDown.toFixed(2)}%</span></td>
-                            <td className="p-4 text-center font-mono text-sm"><span className={`${analysis.rsi < 30 ? 'text-green-400 font-bold' : analysis.rsi > 70 ? 'text-red-400 font-bold' : 'text-gray-500'}`}>{analysis.rsi.toFixed(0)}</span></td>
-                            <td className="p-4 text-center"><span className={`text-[10px] font-bold px-3 py-1 rounded-full ${analysis.color} ${analysis.bg}`}>{analysis.signal}</span></td>
-                        </tr>
-                        );
-                    })}
-                    </tbody>
-                </table>
-                <AlgoLegend />
+            </div>`;
+        }
+
+        function renderPortfolio() {
+            let totalInv = 0, totalVal = 0;
+            const rows = state.portfolio.map(item => {
+                const asset = state.allAssets.find(a => a.symbol === item.symbol) || { price: item.avgCost };
+                const val = item.shares * asset.price;
+                const pl = val - item.invested;
+                const plPct = (pl / item.invested) * 100;
+                totalInv += item.invested;
+                totalVal += val;
+                return `
+                <tr class="border-b border-gray-800 hover:bg-[#111]">
+                    <td class="p-4 font-bold text-white">${item.symbol}</td>
+                    <td class="p-4 text-right text-gray-400 font-mono">${item.shares.toFixed(4)}</td>
+                    <td class="p-4 text-right text-gray-400 font-mono">${formatCurrency(item.avgCost)}</td>
+                    <td class="p-4 text-right text-white font-mono">${formatCurrency(asset.price)}</td>
+                    <td class="p-4 text-right text-blue-300 font-mono">${formatCurrency(val)}</td>
+                    <td class="p-4 text-right font-mono font-bold ${pl>=0?'text-green-400':'text-red-400'}">
+                        ${pl>=0?'+':''}${formatCurrency(pl)} <span class="text-xs font-normal opacity-70">(${plPct.toFixed(2)}%)</span>
+                    </td>
+                    <td class="p-4 text-center">
+                        <button onclick="removePortfolioItem('${item.symbol}')" class="text-red-500 hover:text-red-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    </td>
+                </tr>`;
+            }).join('');
+
+            const totalPL = totalVal - totalInv;
+            const totalPLPct = totalInv > 0 ? (totalPL / totalInv) * 100 : 0;
+
+            return `
+            <div class="animate-in fade-in space-y-6">
+                 <div class="flex justify-between items-end">
+                    <h2 class="text-2xl font-bold text-white">Long Term Portfolio</h2>
+                 </div>
+                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg">
+                        <div class="text-gray-500 text-xs uppercase">Total Invested</div>
+                        <div class="text-3xl font-mono text-white">${formatCurrency(totalInv)}</div>
+                    </div>
+                    <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg">
+                        <div class="text-gray-500 text-xs uppercase">Current Value</div>
+                        <div class="text-3xl font-mono text-blue-400">${formatCurrency(totalVal)}</div>
+                    </div>
+                     <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg">
+                        <div class="text-gray-500 text-xs uppercase">Total P/L</div>
+                        <div class="text-3xl font-mono ${totalPL>=0?'text-green-400':'text-red-400'}">${totalPL>=0?'+':''}${formatCurrency(totalPL)} (${totalPLPct.toFixed(2)}%)</div>
+                    </div>
+                 </div>
+
+                 <div class="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg">
+                    <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i> Add Investment (DCA)</h3>
+                    <form onsubmit="addPortfolioItem(event)" class="flex gap-4 items-end">
+                        <div class="flex-1">
+                            <label class="block text-xs text-gray-500 mb-1">Asset</label>
+                            <select id="portSymbol" class="w-full bg-black border border-gray-700 text-white rounded px-3 py-2 text-sm">
+                                <option value="">Select...</option>
+                                ${BASE_POOL.map(a => `<option value="${a.symbol}">${a.symbol} - ${a.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="flex-1">
+                             <label class="block text-xs text-gray-500 mb-1">Amount ($)</label>
+                             <input id="portAmount" type="number" placeholder="5000" class="w-full bg-black border border-gray-700 text-white rounded px-3 py-2 text-sm">
+                        </div>
+                        <button type="submit" class="px-6 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-bold rounded">Add</button>
+                    </form>
+                 </div>
+
+                 <div class="overflow-x-auto bg-[#0e0e0e] border border-gray-800 rounded-lg">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="text-gray-500 text-xs uppercase border-b border-gray-800">
+                                <th class="p-4">Asset</th><th class="p-4 text-right">Shares</th><th class="p-4 text-right">Avg Cost</th>
+                                <th class="p-4 text-right">Price</th><th class="p-4 text-right">Value</th><th class="p-4 text-right">Return</th><th class="p-4 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows.length ? rows : '<tr><td colspan="7" class="p-8 text-center text-gray-500">No assets yet.</td></tr>'}</tbody>
+                    </table>
+                 </div>
+            </div>`;
+        }
+
+        function renderHeader() {
+            return `
+            <div class="h-14 border-b border-gray-800 flex items-center justify-between px-6 bg-[#050505] sticky top-0 z-50 backdrop-blur-md bg-opacity-80">
+                <div class="flex items-center gap-8">
+                    <div class="flex items-center gap-2 cursor-pointer" onclick="updateState({view:'dashboard'})">
+                        <div class="w-6 h-6 bg-blue-600 rounded flex items-center justify-center font-bold text-xs text-white">PT</div>
+                        <span class="font-bold text-lg tracking-tight text-white">PRO<span class="text-blue-500">TRADER</span></span>
+                    </div>
+                    <div class="hidden md:flex gap-1">
+                         <button onclick="updateState({view:'dashboard'})" class="px-4 py-1.5 rounded text-xs font-bold transition-all ${state.view==='dashboard'||state.view==='detail' ? 'bg-gray-800 text-white':'text-gray-500 hover:text-gray-300'}">SCANNER</button>
+                         <button onclick="updateState({view:'portfolio'})" class="px-4 py-1.5 rounded text-xs font-bold transition-all ${state.view==='portfolio' ? 'bg-gray-800 text-white':'text-gray-500 hover:text-gray-300'}">PORTFOLIO</button>
+                    </div>
                 </div>
-             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+                <div class="flex items-center gap-3">
+                     <div class="hidden md:block text-right">
+                        <div class="text-[10px] text-gray-500 uppercase">Last Update</div>
+                        <div class="text-xs font-bold text-white">${state.lastUpdated.toLocaleTimeString()}</div>
+                     </div>
+                     <div class="flex flex-col items-end">
+                         <button onclick="fetchData()" ${state.isRefreshing ? 'disabled' : ''} class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-colors shadow-[0_0_10px_rgba(37,99,235,0.4)] ${state.isRefreshing ? 'opacity-50 cursor-not-allowed' : ''}">
+                            <i data-lucide="refresh-cw" class="w-3 h-3 ${state.isRefreshing ? 'animate-spin' : ''}"></i> ${state.isRefreshing ? 'FETCHING...' : 'REFRESH DATA'}
+                         </button>
+                         <div class="text-[9px] mt-1 text-gray-600 flex items-center gap-1">API: <span class="${state.apiStatus.includes('online') ? 'text-green-500' : 'text-orange-500'}">${state.apiStatus}</span></div>
+                     </div>
+                </div>
+            </div>`;
+        }
+
+        // --- GLOBAL FUNCTIONS (exposed to window for HTML events) ---
+        window.setSort = (key) => {
+            let direction = 'asc';
+            if (state.sortConfig.key === key && state.sortConfig.direction === 'asc') direction = 'desc';
+            updateState({ sortConfig: { key, direction } });
+        };
+        window.setStrategy = (s) => updateState({ strategy: s });
+        window.selectAsset = (s) => {
+            state.selectedAsset = s;
+            updateState({ view: 'detail' });
+        };
+        window.fetchData = fetchData; // Expose fetch function
+        window.updateState = updateState; // For nav buttons
+        
+        window.addPortfolioItem = (e) => {
+            e.preventDefault();
+            const sym = document.getElementById('portSymbol').value;
+            const amt = parseFloat(document.getElementById('portAmount').value);
+            if(!sym || !amt) return;
+            
+            const asset = state.allAssets.find(a => a.symbol === sym);
+            if(!asset) { alert("Asset error"); return; }
+            
+            const price = asset.price;
+            const shares = amt / price;
+            
+            // Check exists
+            const existing = state.portfolio.find(p => p.symbol === sym);
+            let newPort = [];
+            if(existing) {
+                newPort = state.portfolio.map(p => p.symbol === sym ? { ...p, shares: p.shares + shares, invested: p.invested + amt, avgCost: (p.invested + amt)/(p.shares+shares) } : p);
+            } else {
+                newPort = [...state.portfolio, { symbol: sym, shares, invested: amt, avgCost: price }];
+            }
+            
+            localStorage.setItem('proTraderPortfolio', JSON.stringify(newPort));
+            state.portfolio = newPort;
+            render();
+        };
+
+        window.removePortfolioItem = (sym) => {
+            const newPort = state.portfolio.filter(p => p.symbol !== sym);
+            localStorage.setItem('proTraderPortfolio', JSON.stringify(newPort));
+            state.portfolio = newPort;
+            render();
+        };
+
+        // --- MAIN RENDER LOOP ---
+        function render() {
+            const root = document.getElementById('root');
+            let content = '';
+            if (state.view === 'dashboard') content = renderDashboard();
+            else if (state.view === 'detail') content = renderDetail();
+            else if (state.view === 'portfolio') content = renderPortfolio();
+            
+            root.innerHTML = renderHeader() + `<div class="p-6 max-w-7xl mx-auto w-full">${content}</div>`;
+            
+            // Re-init icons
+            if(window.lucide) window.lucide.createIcons();
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+</html>
