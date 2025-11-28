@@ -3,730 +3,950 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Trader Dashboard</title>
+    <title>Pro Trader Alpha - Terminal</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'neon-blue': '#00f3ff',
+                        'neon-purple': '#bc13fe',
+                        'neon-green': '#0aff68',
+                        'glass-dark': 'rgba(13, 17, 23, 0.85)',
+                        'glass-light': 'rgba(255, 255, 255, 0.05)',
+                    },
+                    boxShadow: {
+                        'glow': '0 0 15px rgba(0, 243, 255, 0.3)',
+                        'glow-gold': '0 0 20px rgba(234, 179, 8, 0.4)',
+                    }
+                }
+            }
+        }
+    </script>
     
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
     <style>
         body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: #050505; 
-            color: #e5e7eb; 
+            background: radial-gradient(circle at top center, #1e293b, #020617);
+            color: #e2e8f0; 
+            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+            min-height: 100vh;
         }
-        .font-mono { font-family: 'JetBrains Mono', monospace; }
         
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #0e0e0e; }
-        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        /* Glassmorphism Classes */
+        .glass-panel { 
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8));
+            backdrop-filter: blur(12px); 
+            border: 1px solid rgba(255, 255, 255, 0.08); 
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        
+        .glass-header {
+            background: rgba(2, 6, 23, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
 
-        /* Animations */
-        .fade-in { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .glass-table-header { 
+            background: rgba(255, 255, 255, 0.03); 
+        }
+
+        /* Animations & Interactions */
+        .btn-strategy { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .btn-strategy:active { transform: scale(0.98); }
         
-        .spin-slow { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        tr.stock-row { transition: all 0.2s; }
+        tr.stock-row:hover { background-color: rgba(255, 255, 255, 0.05); transform: translateX(4px); }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Sort Headers */
+        th.sortable { cursor: pointer; user-select: none; transition: color 0.2s; }
+        th.sortable:hover { color: #00f3ff; text-shadow: 0 0 8px rgba(0,243,255,0.5); }
+
+        /* Logo Fallback */
+        .logo-placeholder {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 10px;
+        }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body>
+    <div id="root"></div>
 
-    <!-- HEADER -->
-    <header class="h-16 border-b border-gray-800 flex items-center justify-between px-4 md:px-8 bg-black/80 backdrop-blur-md sticky top-0 z-50">
-        <div class="flex items-center gap-8">
-            <div class="flex items-center gap-2 cursor-pointer" onclick="app.setView('dashboard')">
-                <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-xs text-white shadow-lg shadow-blue-900/20">PT</div>
-                <span class="font-bold text-xl tracking-tight text-white">PRO<span class="text-blue-500">TRADER</span></span>
-            </div>
-            <nav class="hidden md:flex gap-1 bg-gray-900/50 p-1 rounded-lg border border-gray-800">
-                <button id="nav-dashboard" onclick="app.setView('dashboard')" class="px-4 py-1.5 rounded text-xs font-bold transition-all text-white bg-gray-800">SCANNER</button>
-                <button id="nav-portfolio" onclick="app.setView('portfolio')" class="px-4 py-1.5 rounded text-xs font-bold transition-all text-gray-500 hover:text-white">PORTFOLIO</button>
-            </nav>
-        </div>
-        
-        <div class="flex items-center gap-4">
-             <div class="hidden md:block text-right">
-                <div class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Last Update</div>
-                <div id="last-updated" class="text-xs font-mono font-bold text-white">--:--:--</div>
-             </div>
-             <div class="flex flex-col items-end">
-                 <button id="refresh-btn" onclick="app.handleRefresh()" class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-all shadow-lg shadow-blue-900/20 active:scale-95">
-                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> 
-                    <span id="refresh-text">REFRESH DATA</span>
-                 </button>
-                 <div class="text-[9px] mt-1 text-gray-600 flex items-center gap-1 font-mono">
-                    API: <span id="api-status" class="text-orange-500">OFFLINE (CACHED)</span>
-                 </div>
-             </div>
-        </div>
-    </header>
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
 
-    <!-- MAIN CONTENT -->
-    <main id="root" class="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
-        <!-- Dynamic Content Injected Here -->
-    </main>
-
-    <!-- JAVASCRIPT LOGIC -->
-    <script>
         // --- CONFIGURATION ---
-        const MARKETSTACK_KEY = '29f6e55e359cea3c32dfb279a4901516'; 
-        const MARKETSTACK_BASE_URL = 'http://api.marketstack.com/v2'; // Free tier is HTTP
-
-        const BASE_POOL = [
-            { symbol: 'SPY', name: 'S&P 500 ETF', type: 'index', price: 679.68, ath: 689.70, volatility: 0.012, marketCap: 613, alwaysShow: true }, 
-            { symbol: 'BTC', name: 'Bitcoin', type: 'crypto', price: 91316.66, ath: 126080.00, volatility: 0.045, marketCap: 1800, alwaysShow: true },
-            { symbol: 'XAU', name: 'Gold', type: 'commodity', price: 4162.90, ath: 4250.00, volatility: 0.008, marketCap: 18000, alwaysShow: true },
-            { symbol: 'NVDA', name: 'NVIDIA Corp', type: 'stock', price: 182.55, ath: 212.19, volatility: 0.035, marketCap: 4321 },
-            { symbol: 'AAPL', name: 'Apple Inc', type: 'stock', price: 277.55, ath: 280.38, volatility: 0.015, marketCap: 4100 },
-            { symbol: 'GOOGL', name: 'Alphabet', type: 'stock', price: 319.95, ath: 328.83, volatility: 0.020, marketCap: 3860 },
-            { symbol: 'MSFT', name: 'Microsoft', type: 'stock', price: 476.99, ath: 555.45, volatility: 0.018, marketCap: 3520 },
-            { symbol: 'AMZN', name: 'Amazon', type: 'stock', price: 229.51, ath: 258.60, volatility: 0.022, marketCap: 2450 },
-            { symbol: 'AVGO', name: 'Broadcom', type: 'stock', price: 385.03, ath: 399.87, volatility: 0.025, marketCap: 1880 },
-            { symbol: 'META', name: 'Meta Platforms', type: 'stock', price: 635.80, ath: 796.25, volatility: 0.030, marketCap: 1600 },
-            { symbol: 'TSLA', name: 'Tesla Inc', type: 'stock', price: 419.10, ath: 488.54, volatility: 0.050, marketCap: 1420 },
-            { symbol: 'BRK.B', name: 'Berkshire Hath', type: 'stock', price: 508.60, ath: 542.07, volatility: 0.010, marketCap: 1110 },
-            { symbol: 'LLY', name: 'Eli Lilly', type: 'stock', price: 1103.27, ath: 1118.00, volatility: 0.015, marketCap: 1040 },
-            { symbol: 'WMT', name: 'Walmart', type: 'stock', price: 106.07, ath: 109.59, volatility: 0.010, marketCap: 870 },
-            { symbol: 'JPM', name: 'JPMorgan Chase', type: 'stock', price: 298.56, ath: 300.00, volatility: 0.012, marketCap: 837 },
-            { symbol: 'V', name: 'Visa', type: 'stock', price: 315.00, ath: 320.00, volatility: 0.011, marketCap: 627 },
-            { symbol: 'MA', name: 'Mastercard', type: 'stock', price: 520.00, ath: 530.00, volatility: 0.012, marketCap: 480 },
-            { symbol: 'BAC', name: 'Bank of America', type: 'stock', price: 46.50, ath: 55.00, volatility: 0.015, marketCap: 360 },
-            { symbol: 'UNH', name: 'UnitedHealth', type: 'stock', price: 580.00, ath: 600.00, volatility: 0.012, marketCap: 530 },
-            { symbol: 'JNJ', name: 'Johnson & Johnson', type: 'stock', price: 155.00, ath: 175.00, volatility: 0.010, marketCap: 370 },
-            { symbol: 'MRK', name: 'Merck & Co', type: 'stock', price: 105.00, ath: 130.00, volatility: 0.012, marketCap: 260 },
-            { symbol: 'ABBV', name: 'AbbVie', type: 'stock', price: 195.00, ath: 200.00, volatility: 0.013, marketCap: 340 },
-            { symbol: 'COST', name: 'Costco', type: 'stock', price: 940.00, ath: 960.00, volatility: 0.015, marketCap: 420 },
-            { symbol: 'PG', name: 'Procter & Gamble', type: 'stock', price: 175.00, ath: 180.00, volatility: 0.008, marketCap: 410 },
-            { symbol: 'HD', name: 'Home Depot', type: 'stock', price: 410.00, ath: 420.00, volatility: 0.014, marketCap: 400 },
-            { symbol: 'KO', name: 'Coca-Cola', type: 'stock', price: 68.00, ath: 72.00, volatility: 0.008, marketCap: 290 },
-            { symbol: 'PEP', name: 'PepsiCo', type: 'stock', price: 165.00, ath: 180.00, volatility: 0.009, marketCap: 230 },
-            { symbol: 'XOM', name: 'Exxon Mobil', type: 'stock', price: 114.51, ath: 121.88, volatility: 0.014, marketCap: 482 },
-            { symbol: 'CVX', name: 'Chevron', type: 'stock', price: 155.00, ath: 170.00, volatility: 0.015, marketCap: 280 },
-            { symbol: 'PLTR', name: 'Palantir', type: 'stock', price: 165.77, ath: 207.52, volatility: 0.060, marketCap: 391 }, 
-            { symbol: 'COIN', name: 'Coinbase', type: 'stock', price: 265.03, ath: 444.65, volatility: 0.070, marketCap: 71 },
-            { symbol: 'NFLX', name: 'Netflix', type: 'stock', price: 890.00, ath: 900.00, volatility: 0.025, marketCap: 380 },
-            { symbol: 'AMD', name: 'AMD', type: 'stock', price: 145.00, ath: 220.00, volatility: 0.040, marketCap: 235 },
-            { symbol: 'CRM', name: 'Salesforce', type: 'stock', price: 330.00, ath: 340.00, volatility: 0.020, marketCap: 320 },
-            { symbol: 'ORCL', name: 'Oracle', type: 'stock', price: 185.00, ath: 195.00, volatility: 0.018, marketCap: 510 },
-            { symbol: 'ADBE', name: 'Adobe', type: 'stock', price: 520.00, ath: 600.00, volatility: 0.022, marketCap: 230 },
-            { symbol: 'DIS', name: 'Disney', type: 'stock', price: 115.00, ath: 125.00, volatility: 0.018, marketCap: 210 },
-            { symbol: 'NKE', name: 'Nike', type: 'stock', price: 85.00, ath: 100.00, volatility: 0.015, marketCap: 130 },
-            { symbol: 'INTC', name: 'Intel', type: 'stock', price: 24.00, ath: 50.00, volatility: 0.030, marketCap: 100 },
-            { symbol: 'TMO', name: 'Thermo Fisher', type: 'stock', price: 580.00, ath: 620.00, volatility: 0.012, marketCap: 220 },
-            { symbol: 'ABT', name: 'Abbott Labs', type: 'stock', price: 115.00, ath: 120.00, volatility: 0.010, marketCap: 200 },
-            { symbol: 'CMCSA', name: 'Comcast', type: 'stock', price: 42.00, ath: 48.00, volatility: 0.012, marketCap: 165 },
-            { symbol: 'VZ', name: 'Verizon', type: 'stock', price: 44.00, ath: 45.00, volatility: 0.008, marketCap: 185 },
-            { symbol: 'PFE', name: 'Pfizer', type: 'stock', price: 28.00, ath: 35.00, volatility: 0.012, marketCap: 158 },
-            { symbol: 'CSCO', name: 'Cisco', type: 'stock', price: 58.00, ath: 60.00, volatility: 0.010, marketCap: 230 },
-            { symbol: 'ACN', name: 'Accenture', type: 'stock', price: 360.00, ath: 380.00, volatility: 0.015, marketCap: 225 },
-            { symbol: 'MCD', name: 'McDonalds', type: 'stock', price: 300.00, ath: 310.00, volatility: 0.010, marketCap: 215 },
-            { symbol: 'DHR', name: 'Danaher', type: 'stock', price: 270.00, ath: 280.00, volatility: 0.014, marketCap: 200 },
-            { symbol: 'LIN', name: 'Linde', type: 'stock', price: 460.00, ath: 480.00, volatility: 0.012, marketCap: 220 }
+        const API_KEY = '29f6e55e359cea3c32dfb279a4901516'; // User's Key
+        
+        const INITIAL_TICKERS = [
+            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "BRK.B", 
+            "JPM", "V", "JNJ", "WMT", "PG", "MA", "UNH", "HD", "CVX", "MRK", "ABBV", "KO",
+            "PEP", "COST", "AVGO", "MCD", "CSCO", "ACN", "TMO", "DIS", "ABT", "DHR", 
+            "LIN", "NKE", "PFE", "XOM", "ORCL", "CRM", "BAC", "CMCSA", "NFLX", "AMD", 
+            "INTC", "QCOM", "TXN", "HON", "UPS", "UNP", "LOW", "PM", "SBUX", "IBM"
         ];
 
-        // --- APP STATE ---
-        let state = {
-            allAssets: [],
-            vix: 17.19,
-            fearGreed: { value: 18, status: 'Extreme Fear' },
-            selectedAsset: null,
-            view: 'dashboard',
-            isRefreshing: false,
-            lastUpdated: new Date(),
-            sortConfig: { key: null, direction: 'asc' },
-            strategy: 'hybrid',
-            apiStatus: 'OFFLINE (CACHED)',
-            portfolio: JSON.parse(localStorage.getItem('proTraderPortfolio')) || []
+        const SEED_ATH = {
+            "AAPL": 237.23, "MSFT": 468.35, "GOOGL": 191.75, "AMZN": 215.00,
+            "NVDA": 150.00, "TSLA": 414.50, "META": 602.95, "BRK.B": 484.82,
+            "JPM": 225.48, "V": 305.00, "JNJ": 175.97, "WMT": 85.00,
+            "PG": 177.79, "MA": 530.00, "UNH": 600.00, "HD": 421.00,
+            "CVX": 187.00, "MRK": 133.00, "ABBV": 195.00, "KO": 73.00
         };
 
-        // --- UTILS ---
-        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(val);
-        const formatMarketCap = (val) => val >= 1000 ? `$${(val / 1000).toFixed(2)} T` : `$${val.toFixed(2)} B`;
-        const formatDate = (daysAgo) => {
-            const date = new Date();
-            date.setDate(date.getDate() - daysAgo);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const REFERENCE_CAPS = {
+            "AAPL": 3.4, "MSFT": 3.1, "NVDA": 3.0, "GOOGL": 2.0, "AMZN": 1.9, 
+            "META": 1.4, "BRK.B": 0.9, "TSLA": 0.8, "LLY": 0.8, "AVGO": 0.75, 
+            "JPM": 0.6, "V": 0.55, "UNH": 0.5, "WMT": 0.5, "MA": 0.45, 
+            "PG": 0.4, "JNJ": 0.38, "HD": 0.35, "MRK": 0.3, "CVX": 0.28, 
+            "ABBV": 0.3, "KO": 0.28, "PEP": 0.23, "COST": 0.38, "DIS": 0.17
         };
 
-        // --- CHART DATA GENERATOR ---
-        function generateHistoryFromPrice(currentPrice, volatility, days = 90) {
-            let candles = [];
-            let price = currentPrice;
-            for (let i = 0; i < days; i++) {
-                const changePercent = (Math.random() - 0.48) * (volatility * 1.5); 
-                const move = price * changePercent;
-                const close = price;
-                const open = price - move; 
-                const bodyMax = Math.max(open, close);
-                const bodyMin = Math.min(open, close);
-                const high = bodyMax + (Math.random() * (price * 0.01));
-                const low = bodyMin - (Math.random() * (price * 0.01));
-                candles.push({ day: days - 1 - i, date: formatDate(i), open, high, low, close });
-                price = open; 
-            }
-            return candles.reverse();
-        }
+        // --- HELPER FUNCTIONS ---
+        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        const formatPercent = (val) => `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
+        const formatMarketCap = (val) => val >= 1000000000000 ? `$${(val / 1000000000000).toFixed(1)}T` : `$${(val / 1000000000).toFixed(1)}B`;
 
-        // --- INDICATORS ---
-        function calculateRSI(candles, period = 14) {
-            if (!candles || candles.length < period + 1) return 50;
-            let gains = 0, losses = 0;
-            const len = candles.length;
-            for (let i = 0; i < period; i++) {
-                const current = candles[len - 1 - i];
-                const prev = candles[len - 2 - i];
-                if(!current || !prev) continue;
-                const change = current.close - prev.close;
-                if (change >= 0) gains += change; else losses += Math.abs(change);
-            }
-            let avgGain = gains / period;
-            let avgLoss = losses / period;
-            const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-            return 100 - (100 / (1 + rs));
-        }
+        // Strategy Logic
+        const calculateStatus = (current, ath, vix, rsi = 50, sma200 = 0, strategy = 'hybrid', symbol = '') => {
+            const dropPct = ((ath - current) / ath) * 100;
+            let rating = "WATCH";
+            let color = "text-slate-500";
+            let zoneScore = 1; 
+            let reason = "";
 
-        function calculateRiskReward(asset, currentVix) {
-            const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
-            const rsi = calculateRSI(asset.candles);
-            let score = 50;
-            let signal = 'HOLD';
-            let color = 'text-gray-400';
-            let bg = 'bg-gray-800';
-
-            if (pctDown >= 5 && pctDown < 10) score += 5;
-            if (pctDown >= 10 && pctDown < 15) score += 10;
-            if (pctDown >= 15 && pctDown < 20) score += 15;
-            if (pctDown >= 20 && pctDown < 25) score += 25;
-            if (pctDown >= 25 && pctDown < 30) score += 35;
-            if (pctDown >= 30 && pctDown < 35) score += 45;
-            if (pctDown >= 35 && pctDown < 40) score += 55;
-            if (pctDown >= 40 && pctDown < 45) score += 65;
-            if (pctDown >= 50) score += 80; 
-
-            if (rsi < 30) score += 20;     
-            if (rsi < 40) score += 10;
-            if (currentVix > 20) score += 10;
-
-            if (score >= 85) { signal = 'STRONG BUY'; color = 'text-green-400'; bg = 'bg-green-900/40 border-green-500'; }
-            else if (score >= 70) { signal = 'ACCUMULATE'; color = 'text-green-300'; bg = 'bg-green-900/20 border-green-800'; }
-            else if (score <= 30) { signal = 'WAIT'; color = 'text-yellow-500'; bg = 'bg-yellow-900/20 border-yellow-700'; } 
-            else if (score >= 60) { signal = 'WATCH'; color = 'text-blue-400'; bg = 'bg-blue-900/20 border-blue-800'; }
+            if (dropPct < 5) { rating = "WATCH"; color = "text-slate-400"; zoneScore = 1; }
+            else if (dropPct >= 5 && dropPct < 10) { rating = "DIP BUY"; color = "text-yellow-400"; zoneScore = 2; }
+            else if (dropPct >= 10 && dropPct < 15) { rating = "ACCUMULATE"; color = "text-cyan-400"; zoneScore = 3; }
+            else if (dropPct >= 15 && dropPct < 20) { rating = "STRONG BUY"; color = "text-emerald-400 font-bold"; zoneScore = 4; }
+            else if (dropPct >= 20) { rating = "DEEP VALUE"; color = "text-blue-400 font-bold"; zoneScore = 5; }
             
-            return { signal, color, bg, score, rsi };
-        }
-
-        // --- INITIALIZATION ---
-        const init = () => {
-            // Load Base Data (No API Call initially)
-            state.allAssets = BASE_POOL.map(base => ({
-                ...base,
-                candles: generateHistoryFromPrice(base.price, base.volatility, 90)
-            }));
-            render();
-        };
-
-        // --- CORE FUNCTIONS ---
-        
-        function updateState(newState) {
-            Object.assign(state, newState);
-            render();
-        }
-        
-        function getSortedAssets() {
-            const indices = state.allAssets.filter(a => a.alwaysShow);
-            const stocks = state.allAssets.filter(a => !a.alwaysShow && a.type === 'stock');
-            let ranked = [];
-
-            if (state.strategy === 'hybrid') {
-                ranked = stocks.map(s => ({
-                    ...s,
-                    score: s.marketCap * (Math.max(((s.ath - s.price)/s.ath)*100, 0) + 5)
-                })).sort((a, b) => b.score - a.score);
-            } else if (state.strategy === 'marketCap') {
-                ranked = stocks.sort((a, b) => b.marketCap - a.marketCap);
-            } else if (state.strategy === 'drawdown') {
-                ranked = stocks.sort((a, b) => ((b.ath - b.price)/b.ath) - ((a.ath - a.price)/a.ath));
-            } else if (state.strategy === 'action') {
-                ranked = stocks.sort((a, b) => b.volatility - a.volatility);
-            }
-
-            let combined = [...indices, ...ranked.slice(0, 15)];
-
-            if (state.sortConfig.key) {
-                combined.sort((a, b) => {
-                    let aVal, bVal;
-                    if(state.sortConfig.key === 'pctDown') {
-                        aVal = ((a.ath - a.price)/a.ath); bVal = ((b.ath - b.price)/b.ath);
-                    } else if(state.sortConfig.key === 'rsi') {
-                        aVal = calculateRiskReward(a, state.vix).rsi;
-                        bVal = calculateRiskReward(b, state.vix).rsi;
-                    } else {
-                        aVal = a[state.sortConfig.key]; bVal = b[state.sortConfig.key];
-                    }
-                    if (aVal < bVal) return state.sortConfig.direction === 'asc' ? -1 : 1;
-                    if (aVal > bVal) return state.sortConfig.direction === 'asc' ? 1 : -1;
-                    return 0;
-                });
-            }
-            return combined;
-        }
-
-        async function fetchData() {
-            updateState({ isRefreshing: true, apiStatus: 'FETCHING...' });
-            
-            try {
-                const btcRes = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin');
-                const btcData = await btcRes.json();
-                const realBtc = btcData[0] ? { price: btcData[0].current_price, ath: btcData[0].ath, marketCap: btcData[0].market_cap/1e9 } : null;
-
-                const symbols = BASE_POOL.filter(a => a.type === 'stock').map(a => a.symbol).join(',');
-                let marketstackData = [];
-                let tickersData = [];
+            if (strategy === 'cap') {
+                if (vix > 20 && dropPct > 5) { rating = "SAFE ENTRY"; color = "text-emerald-400 font-bold"; }
+            } else if (strategy === 'deep_value') {
+                if (dropPct < 15) { rating = "WAIT"; color = "text-slate-500"; }
+            } else if (strategy === 'trend_pullback') {
+                if (sma200 > 0) {
+                    if (current > sma200 && dropPct > 5) { rating = "TREND ENTRY"; color = "text-neon-blue font-extrabold animate-pulse shadow-glow"; zoneScore = 10; }
+                    else if (current < sma200) { rating = "BROKEN TREND"; color = "text-red-500"; zoneScore = 0; }
+                    else { rating = "WAITING"; color = "text-slate-500"; }
+                } else {
+                    rating = "SCAN REQ"; color = "text-orange-300";
+                }
+            } else if (strategy === 'pro_logic') {
+                if (dropPct >= 5 && dropPct <= 20) { rating = "PRIME SETUP"; color = "text-neon-purple font-extrabold animate-pulse"; zoneScore = 10; }
+                else if (dropPct > 20 && dropPct < 30) { rating = "VALUE"; color = "text-blue-400"; }
+                else if (dropPct > 30) { rating = "CAUTION"; color = "text-red-400"; }
+                else { rating = "EXPENSIVE"; color = "text-slate-500"; }
+            } else if (strategy === 'ultimate_alpha') {
+                const mCap = REFERENCE_CAPS[symbol] || 0.1; 
+                const capScore = Math.min(20, mCap * 10);
                 
-                try {
-                    const [eodRes, tickerRes] = await Promise.all([
-                        fetch(`${MARKETSTACK_BASE_URL}/eod?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`),
-                        fetch(`${MARKETSTACK_BASE_URL}/tickers?access_key=${MARKETSTACK_KEY}&symbols=${symbols}&limit=100`)
-                    ]);
+                let valueScore = 0;
+                if (dropPct >= 10 && dropPct <= 25) valueScore = 40;
+                else if (dropPct >= 5 && dropPct < 10) valueScore = 20;
+                else if (dropPct > 25 && dropPct < 35) valueScore = 20;
+                else if (dropPct > 35) valueScore = 5; 
+                
+                let trendScore = 0;
+                if (sma200 > 0 && current > sma200) trendScore = 25;
+                
+                let volScore = 0;
+                if (vix > 18) volScore = 15; 
+                
+                const totalScore = capScore + valueScore + trendScore + volScore;
+                
+                const reasons = [];
+                if (mCap > 0.5) reasons.push("💎 Mega Cap");
+                if (valueScore === 40) reasons.push("📉 Prime Discount");
+                else if (valueScore === 20) reasons.push("📉 Deep Value");
+                if (trendScore > 0) reasons.push("📈 Bull Trend");
+                
+                rating = `${totalScore.toFixed(0)}/100`;
+                reason = reasons.join(" • ");
+                zoneScore = totalScore; 
+                
+                if (totalScore > 80) color = "text-yellow-400 font-extrabold drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"; 
+                else if (totalScore > 60) color = "text-emerald-400 font-bold";
+                else color = "text-slate-400";
+            }
+
+            if (strategy !== 'trend_pullback' && strategy !== 'pro_logic' && strategy !== 'ultimate_alpha' && (vix > 25 || rsi < 30) && dropPct > 10) { 
+                rating = "SNIPER ENTRY"; color = "text-red-500 font-extrabold animate-pulse"; zoneScore = 6; 
+            }
+
+            return { dropPct, rating, color, zoneScore, reason };
+        };
+
+        const getDropZoneLabel = (pct) => {
+            if (pct < 5) return "0-5%";
+            if (pct < 10) return "5-10%";
+            if (pct < 15) return "10-15%";
+            if (pct < 20) return "15-20%";
+            return "20%+";
+        };
+
+        const getZoneColorClass = (pct) => {
+            if (pct < 5) return "bg-slate-800 border-slate-700 text-slate-400";
+            if (pct < 10) return "bg-yellow-900/30 border-yellow-600/50 text-yellow-400";
+            if (pct < 15) return "bg-cyan-900/30 border-cyan-600/50 text-cyan-400";
+            if (pct < 20) return "bg-emerald-900/30 border-emerald-600/50 text-emerald-400";
+            return "bg-blue-900/30 border-blue-600/50 text-blue-400";
+        };
+
+        // --- COMPONENTS ---
+
+        // Simple Logo Component
+        const StockLogo = ({ symbol }) => {
+            const [error, setError] = useState(false);
+            const logoUrl = `https://assets.parqet.com/logos/symbol/${symbol}?format=svg`;
+
+            if (error) {
+                return <div className="w-8 h-8 rounded-full logo-placeholder shadow-lg">{symbol.substring(0, 2)}</div>;
+            }
+            return (
+                <div className="w-8 h-8 bg-white rounded-full p-0.5 shadow-lg overflow-hidden flex items-center justify-center">
+                    <img 
+                        src={logoUrl} 
+                        alt={symbol} 
+                        className="w-full h-full object-contain"
+                        onError={() => setError(true)}
+                    />
+                </div>
+            );
+        };
+
+        const DisclaimerModal = ({ onAgree }) => (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                <div className="glass-panel max-w-md w-full p-8 rounded-2xl border border-yellow-500/30 shadow-[0_0_50px_rgba(234,179,8,0.15)] text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent"></div>
                     
-                    if (eodRes.ok) {
-                        const eodJson = await eodRes.json();
-                        marketstackData = eodJson.data || [];
-                        state.apiStatus = 'ONLINE (V2)';
-                    } else {
-                        state.apiStatus = 'OFFLINE (API ERROR)';
-                    }
+                    <div className="mb-6">
+                        <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-yellow-500/20 shadow-lg shadow-yellow-500/10">
+                            <i className="fa-solid fa-triangle-exclamation text-4xl text-yellow-500"></i>
+                        </div>
+                        <h2 className="text-2xl font-bold text-white mb-2 tracking-wide">Legal Disclaimer</h2>
+                        <p className="text-slate-400 text-sm">Please accept terms to proceed.</p>
+                    </div>
                     
-                    if (tickerRes.ok) {
-                        const tickerJson = await tickerRes.json();
-                        tickersData = tickerJson.data || [];
+                    <div className="text-left bg-slate-950/50 p-5 rounded-xl border border-slate-800 mb-8 space-y-3 text-sm text-slate-300 shadow-inner">
+                        <p className="flex gap-2"><i className="fa-solid fa-circle-info text-yellow-500 mt-1 text-xs"></i> <span><strong>No Financial Advice:</strong> This tool is for <strong>educational purposes only</strong>.</span></p>
+                        <p className="flex gap-2"><i className="fa-solid fa-circle-info text-yellow-500 mt-1 text-xs"></i> <span><strong>DYOR:</strong> Always Do Your Own Research.</span></p>
+                        <p className="flex gap-2"><i className="fa-solid fa-circle-info text-yellow-500 mt-1 text-xs"></i> <span><strong>Liability:</strong> The creators are <strong>not liable</strong> for any losses.</span></p>
+                    </div>
+
+                    <button 
+                        onClick={onAgree}
+                        className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-black font-extrabold text-sm tracking-wider py-4 rounded-xl transition-all shadow-lg hover:shadow-yellow-500/20 transform hover:-translate-y-0.5 active:scale-95"
+                    >
+                        I AGREE & ENTER TERMINAL
+                    </button>
+                </div>
+            </div>
+        );
+
+        const ChartView = ({ stock, onClose, historyData }) => {
+            const canvasRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current || !stock) return;
+                if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; }
+                if (!historyData || historyData.length === 0) return;
+
+                const sorted = [...historyData].filter(d => d.close !== null && d.date).reverse();
+                const labels = sorted.map(d => d.date.split('T')[0]);
+                const dataPoints = sorted.map(d => d.close);
+
+                let sma200 = [];
+                if (dataPoints.length >= 200) {
+                    for(let i = 0; i < dataPoints.length; i++) {
+                        if (i < 199) { sma200.push(null); continue; }
+                        const slice = dataPoints.slice(i - 199, i + 1);
+                        const avg = slice.reduce((a, b) => a + b, 0) / 200;
+                        sma200.push(avg);
                     }
-                } catch(e) {
-                    console.warn("Marketstack error:", e);
-                    state.apiStatus = 'OFFLINE (MIXED CONTENT)';
                 }
 
-                const newAssets = state.allAssets.map(asset => {
-                    let freshPrice = asset.price;
-                    let freshMC = asset.marketCap;
-                    let freshName = asset.name;
-                    let freshATH = asset.ath;
-
-                    if(asset.symbol === 'BTC' && realBtc) {
-                        freshPrice = realBtc.price;
-                        freshMC = realBtc.marketCap;
-                        freshATH = realBtc.ath;
-                    }
-
-                    const apiStock = marketstackData.find(i => i.symbol === asset.symbol);
-                    if (apiStock) {
-                        freshPrice = apiStock.close;
-                        const baseAsset = BASE_POOL.find(b => b.symbol === asset.symbol);
-                        if(baseAsset) {
-                            freshMC = baseAsset.marketCap * (freshPrice / baseAsset.price);
+                const ctx = canvasRef.current.getContext('2d');
+                chartInstance.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `${stock.symbol} Price`,
+                            data: dataPoints,
+                            borderColor: stock.price >= stock.prevClose ? '#10b981' : '#ef4444',
+                            backgroundColor: (context) => {
+                                const ctx = context.chart.ctx;
+                                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                                gradient.addColorStop(0, stock.price >= stock.prevClose ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)');
+                                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                                return gradient;
+                            },
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            pointHoverRadius: 4,
+                            tension: 0.1,
+                            fill: true
+                        }, {
+                            label: 'All Time High',
+                            data: Array(labels.length).fill(stock.ath),
+                            borderColor: '#fbbf24',
+                            borderDash: [5, 5],
+                            borderWidth: 1,
+                            pointRadius: 0
+                        }, {
+                            label: '200 Day SMA',
+                            data: sma200,
+                            borderColor: '#00f3ff',
+                            borderWidth: 1,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#94a3b8' } },
+                            tooltip: { callbacks: { label: (ctx) => formatCurrency(ctx.raw) } }
+                        },
+                        scales: {
+                            y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 8 } }
                         }
-                        if(freshPrice > freshATH) freshATH = freshPrice;
                     }
-                    
-                    const apiTicker = tickersData.find(i => i.symbol === asset.symbol);
-                    if(apiTicker) freshName = apiTicker.name;
-
-                    let newCandles = asset.candles;
-                    if(freshPrice !== asset.price) {
-                         newCandles = [...asset.candles];
-                         const last = newCandles[newCandles.length - 1];
-                         newCandles[newCandles.length - 1] = {
-                             ...last,
-                             close: freshPrice,
-                             high: Math.max(last.high, freshPrice),
-                             low: Math.min(last.low, freshPrice)
-                         };
-                    }
-
-                    return { ...asset, price: freshPrice, marketCap: freshMC, name: freshName, ath: freshATH, candles: newCandles };
                 });
+                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+            }, [stock, historyData]);
 
-                updateState({ allAssets: newAssets, lastUpdated: new Date(), isRefreshing: false });
+            if (!stock) return null;
 
-            } catch (err) {
-                console.error(err);
-                updateState({ isRefreshing: false, apiStatus: 'ERROR' });
-            }
-        }
+            const diff = stock.price - stock.ath;
+            const diffColor = diff >= 0 ? 'text-emerald-400' : 'text-red-400';
+            const diffText = diff >= 0 ? `+${formatCurrency(diff)}` : formatCurrency(diff);
 
-        // --- RENDERERS ---
-
-        function renderCandleChartSVG(data, width) {
-            if(!data || data.length === 0) return '';
-            const height = 300, padding = 20;
-            const allHighs = data.map(d => d.high);
-            const allLows = data.map(d => d.low);
-            const maxPrice = Math.max(...allHighs);
-            const minPrice = Math.min(...allLows);
-            const priceRange = maxPrice - minPrice || 1;
-            const candleWidth = (width - (padding * 2)) / data.length;
-            const barWidth = Math.max(1, candleWidth * 0.6);
-            
-            const getY = (p) => height - padding - ((p - minPrice) / priceRange) * (height - (padding * 2));
-            const getX = (i) => padding + (i * candleWidth);
-
-            let paths = '';
-            data.forEach((c, i) => {
-                const x = getX(i);
-                const color = c.close >= c.open ? '#22c55e' : '#ef4444';
-                const wickX = x + barWidth / 2;
-                let bodyH = Math.abs(getY(c.close) - getY(c.open));
-                if(bodyH < 1) bodyH = 1;
-                const bodyY = Math.min(getY(c.open), getY(c.close));
-                paths += `<line x1="${wickX}" y1="${getY(c.high)}" x2="${wickX}" y2="${getY(c.low)}" stroke="${color}" stroke-width="1"></line>`;
-                paths += `<rect x="${x}" y="${bodyY}" width="${barWidth}" height="${bodyH}" fill="${color}"></rect>`;
-            });
-            
-            return `
-                <div class="w-full h-[350px] bg-[#0e0e0e] rounded-lg border border-gray-800 relative select-none group">
-                  <div class="absolute right-2 top-2 text-xs text-gray-500">${formatCurrency(maxPrice)}</div>
-                  <div class="absolute right-2 bottom-2 text-xs text-gray-500">${formatCurrency(minPrice)}</div>
-                  <svg width="100%" height="100%" class="overflow-visible">${paths}</svg>
-                </div>
-            `;
-        }
-
-        function renderDashboard() {
-            const assets = getSortedAssets();
-            const rows = assets.map(asset => {
-                const analysis = calculateRiskReward(asset, state.vix);
-                const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
-                const isGreen = asset.price >= asset.candles[asset.candles.length-2].close;
-                return `
-                <tr class="border-b border-gray-800 hover:bg-[#111] cursor-pointer transition-colors" onclick="app.selectAsset('${asset.symbol}')">
-                    <td class="p-4 font-bold text-white flex items-center gap-3">
-                        <div class="w-1 h-8 ${analysis.color.replace('text-', 'bg-')} rounded-full"></div>
-                        <div><div class="text-base font-bold text-gray-100">${asset.symbol}</div><div class="text-[10px] text-gray-500 font-normal uppercase tracking-wider">${asset.name}</div></div>
-                    </td>
-                    <td class="p-4 text-right font-mono text-base ${isGreen ? 'text-green-400' : 'text-red-400'}">${formatCurrency(asset.price)}</td>
-                    <td class="p-4 text-right text-gray-400 font-mono text-sm hidden sm:table-cell">${formatMarketCap(asset.marketCap)}</td>
-                    <td class="p-4 text-right font-bold text-white hidden md:table-cell"><span class="text-xs px-2 py-1 rounded border ${pctDown > 10 ? 'border-red-900 bg-red-900/20 text-red-400' : 'border-gray-700 bg-gray-800'}">-${pctDown.toFixed(2)}%</span></td>
-                    <td class="p-4 text-center font-mono text-sm"><span class="${analysis.rsi < 30 ? 'text-green-400 font-bold' : analysis.rsi > 70 ? 'text-red-400 font-bold' : 'text-gray-500'}">${analysis.rsi.toFixed(0)}</span></td>
-                    <td class="p-4 text-center"><span class="text-[10px] font-bold px-3 py-1 rounded-full border ${analysis.color} ${analysis.bg}">${analysis.signal}</span></td>
-                </tr>`;
-            }).join('');
-
-            return `
-                <div class="space-y-6 fade-in">
-                    ${renderMarketPulse()}
-                    ${renderStrategySelector()}
-                    <div class="bg-[#0e0e0e] border border-gray-800 rounded-xl overflow-hidden shadow-2xl">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left border-collapse">
-                                <thead>
-                                    <tr class="text-gray-500 text-xs uppercase border-b border-gray-800 bg-[#0a0a0a]">
-                                        <th class="p-4 cursor-pointer hover:text-white" onclick="app.setSort('symbol')">Asset</th>
-                                        <th class="p-4 text-right cursor-pointer hover:text-white" onclick="app.setSort('price')">Price</th>
-                                        <th class="p-4 text-right hidden sm:table-cell cursor-pointer hover:text-white" onclick="app.setSort('marketCap')">Mkt Cap</th>
-                                        <th class="p-4 text-right hidden md:table-cell cursor-pointer hover:text-white" onclick="app.setSort('pctDown')">% Down</th>
-                                        <th class="p-4 text-center cursor-pointer hover:text-white" onclick="app.setSort('rsi')">RSI (14)</th>
-                                        <th class="p-4 text-center">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>${rows}</tbody>
-                            </table>
-                        </div>
-                        ${renderAlgoLegend()}
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderMarketPulse() {
-            const fg = state.fearGreed;
-            let fgColor = fg.value < 25 ? 'text-red-500' : fg.value < 45 ? 'text-orange-400' : fg.value > 75 ? 'text-green-500' : 'text-green-300';
-            return `
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div class="bg-[#0e0e0e] border border-gray-800 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden">
-                     <div class="relative z-10">
-                         <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="gauge" class="w-4 h-4"></i> Fear & Greed</h3>
-                         <div class="text-3xl font-black mt-1 ${fgColor}">${fg.value}</div>
-                         <div class="text-xs text-gray-400 font-medium mt-1">${fg.status}</div>
-                     </div>
-                     <div class="absolute right-0 top-0 w-32 h-full bg-gradient-to-l from-gray-900 to-transparent pointer-events-none"></div>
-                </div>
-                <div class="bg-[#0e0e0e] border border-gray-800 p-5 rounded-xl">
-                    <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="activity" class="w-4 h-4"></i> VIX Index</h3>
-                    <div class="text-3xl font-black mt-1 ${state.vix > 20 ? 'text-red-500' : 'text-blue-400'}">${state.vix.toFixed(2)}</div>
-                    <div class="text-xs text-gray-500 mt-1">${state.vix > 20 ? "High Volatility Environment" : "Stable Market Conditions"}</div>
-                </div>
-                <div class="bg-[#0e0e0e] border border-gray-800 p-5 rounded-xl">
-                    <h3 class="text-gray-500 text-xs font-bold uppercase flex items-center gap-2"><i data-lucide="zap" class="w-4 h-4 text-yellow-400"></i> Algo Insight</h3>
-                    <div class="text-sm text-gray-300 mt-2 leading-relaxed">Current market fear suggests a potential <strong>accumulation phase</strong> for high-quality assets.</div>
-                </div>
-            </div>`;
-        }
-
-        function renderStrategySelector() {
-             const strategies = [
-                 { id: 'hybrid', label: 'Hybrid Value', icon: 'layers' },
-                 { id: 'marketCap', label: 'Market Cap', icon: 'dollar-sign' },
-                 { id: 'drawdown', label: 'Deep Value', icon: 'trending-down' },
-                 { id: 'action', label: 'High Action', icon: 'activity' }
-             ];
-             return `
-             <div class="flex flex-wrap gap-2 p-1 bg-[#0e0e0e] border border-gray-800 rounded-lg w-fit">
-                ${strategies.map(s => `
-                    <button onclick="app.setStrategy('${s.id}')" class="px-3 py-1.5 text-xs font-bold rounded flex items-center gap-2 transition-all ${state.strategy === s.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-gray-500 hover:text-white'}">
-                        <i data-lucide="${s.icon}" class="w-3 h-3"></i> ${s.label}
-                    </button>
-                `).join('')}
-             </div>`;
-        }
-
-        function renderAlgoLegend() {
-            return `
-            <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs border-t border-gray-800 bg-[#0a0a0a]">
-                 <div class="flex items-start gap-3">
-                    <div class="w-2 h-2 mt-1 bg-green-500 rounded-full shadow-[0_0_8px_#22c55e]"></div>
-                    <div><div class="font-bold text-green-400">STRONG BUY / ACCUMULATE</div><div class="text-gray-500 leading-tight mt-1">Asset is >20% below ATH with Oversold RSI (<30).</div></div>
-                 </div>
-                 <div class="flex items-start gap-3">
-                    <div class="w-2 h-2 mt-1 bg-blue-500 rounded-full"></div>
-                    <div><div class="font-bold text-blue-400">WATCH</div><div class="text-gray-500 leading-tight mt-1">Asset is showing stability or moderate value.</div></div>
-                 </div>
-                 <div class="flex items-start gap-3">
-                    <div class="w-2 h-2 mt-1 bg-yellow-500 rounded-full"></div>
-                    <div><div class="font-bold text-yellow-500">WAIT</div><div class="text-gray-500 leading-tight mt-1">Price is near All-Time Highs. Wait for a pullback.</div></div>
-                 </div>
-            </div>`;
-        }
-
-        function renderDetail() {
-            const asset = state.allAssets.find(a => a.symbol === state.selectedAsset);
-            if(!asset) return '';
-            const analysis = calculateRiskReward(asset, state.vix);
-            const pctDown = ((asset.ath - asset.price) / asset.ath) * 100;
-            const chartHtml = renderCandleChartSVG(asset.candles, 800);
-            const pct = Math.min(pctDown, 100);
-            const gradient = 'linear-gradient(90deg, #4b5563 0%, #ef4444 50%, #22c55e 100%)';
-
-            return `
-            <div class="space-y-6 fade-in">
-                <button onclick="app.setView('dashboard'); app.selectAsset(null);" class="flex items-center gap-2 text-gray-400 hover:text-white text-sm font-bold uppercase tracking-widest">
-                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Scanner
-                </button>
-
-                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    <div class="lg:col-span-8 space-y-4">
-                         <div class="bg-[#0e0e0e] p-6 rounded-xl border border-gray-800 flex justify-between items-end">
-                            <div>
-                                <h1 class="text-4xl font-bold text-white flex items-center gap-3">${asset.symbol} <span class="text-sm font-normal text-gray-500 border border-gray-700 px-2 py-0.5 rounded bg-black">${asset.type}</span></h1>
-                                <p class="text-gray-400 text-sm mt-1">${asset.name}</p>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-xs text-gray-500 uppercase font-bold mb-1">Current Price</div>
-                                <div class="text-5xl font-mono font-bold text-white tracking-tighter">${formatCurrency(asset.price)}</div>
-                            </div>
-                        </div>
-                        ${chartHtml}
-                    </div>
-                    <div class="lg:col-span-4 space-y-4">
-                        <div class="p-6 rounded-xl border-2 ${analysis.bg} ${analysis.color}">
-                            <div class="flex items-center gap-2 mb-2 text-xs font-bold uppercase opacity-80"><i data-lucide="activity" class="w-4 h-4"></i> Algo Signal</div>
-                            <div class="text-4xl font-black tracking-tight">${analysis.signal}</div>
-                            <div class="text-sm opacity-70 mt-2">Confidence Score: ${analysis.score}/100</div>
-                        </div>
-                        <div class="bg-[#0e0e0e] border border-gray-800 rounded-xl p-6 space-y-6">
-                            <div>
-                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-3 h-3"></i> Key Levels</h3>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div class="bg-black p-3 rounded border border-gray-800"><div class="text-[10px] text-gray-500 uppercase mb-1">ATH</div><div class="text-white font-mono font-bold">${formatCurrency(asset.ath)}</div></div>
-                                    <div class="bg-black p-3 rounded border border-gray-800"><div class="text-[10px] text-gray-500 uppercase mb-1">Market Cap</div><div class="text-white font-mono font-bold">${formatMarketCap(asset.marketCap)}</div></div>
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="glass-panel w-full max-w-5xl rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[85vh]">
+                        <div className="p-6 border-b border-slate-700/50 flex justify-between items-center glass-header">
+                            <div className="flex items-center gap-4">
+                                <StockLogo symbol={stock.symbol} />
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                                        {stock.symbol}
+                                        <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">US MARKET</span>
+                                    </h2>
+                                    <div className="flex gap-4 text-sm mt-1">
+                                        <span className="text-slate-400">Price: <strong className="text-white">{formatCurrency(stock.price)}</strong></span>
+                                        <span className="text-slate-400">ATH: <strong className="text-yellow-400">{formatCurrency(stock.ath)}</strong></span>
+                                    </div>
                                 </div>
                             </div>
-                             <div>
-                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between"><span>Discount Zone</span><span class="text-white">${pctDown.toFixed(2)}% Down</span></h3>
-                                <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative"><div class="absolute top-0 bottom-0 w-full" style="background: ${gradient}"></div><div class="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white] z-10" style="left: ${pct}%"></div></div>
+                            <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white transition flex items-center justify-center">
+                                <i className="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <div className="flex-1 p-4 relative min-h-0 bg-[#0b1120]">
+                            {(!historyData || historyData.length === 0) ? (
+                                <div className="flex h-full items-center justify-center text-slate-500 flex-col gap-3">
+                                    <i className="fa-solid fa-chart-line text-5xl opacity-20 animate-pulse"></i>
+                                    <p>No chart data available.</p>
+                                </div>
+                            ) : <canvas ref={canvasRef}></canvas>}
+                        </div>
+                        <div className="p-6 bg-slate-900/50 border-t border-slate-700/50 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="glass-panel p-4 rounded-xl border-l-4 border-l-purple-500">
+                                <div className="text-slate-400 text-xs uppercase tracking-wider mb-1 font-bold">Signal</div>
+                                <div className={`text-xl font-bold ${stock.stats.color}`}>{stock.stats.rating}</div>
                             </div>
-                            <div>
-                                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2 flex justify-between"><span>RSI (14)</span><span class="${analysis.rsi < 30 ? 'text-green-400' : analysis.rsi > 70 ? 'text-red-400' : 'text-white'}">${analysis.rsi.toFixed(1)}</span></h3>
-                                <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden relative"><div class="absolute left-0 w-[30%] h-full bg-green-900/30"></div><div class="absolute right-0 w-[30%] h-full bg-red-900/30"></div><div class="absolute top-0 h-full w-2 bg-blue-500 rounded-full transition-all duration-500" style="left: ${analysis.rsi}%"></div></div>
+                            <div className="glass-panel p-4 rounded-xl border-l-4 border-l-blue-500">
+                                <div className="text-slate-400 text-xs uppercase tracking-wider mb-1 font-bold">Zone</div>
+                                <div className={`text-lg font-bold ${stock.stats.dropPct > 20 ? 'text-blue-400' : 'text-white'}`}>{getDropZoneLabel(stock.stats.dropPct)} Below ATH</div>
+                            </div>
+                            <div className="glass-panel p-4 rounded-xl border-l-4 border-l-red-500">
+                                <div className="text-slate-400 text-xs uppercase tracking-wider mb-1 font-bold">Drawdown Value</div>
+                                <div className={`text-lg font-bold ${diffColor}`}>{diffText} / share</div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>`;
-        }
-
-        function renderPortfolio() {
-            let totalInv = 0, totalVal = 0;
-            const rows = state.portfolio.map(item => {
-                const asset = state.allAssets.find(a => a.symbol === item.symbol) || { price: item.avgCost };
-                const val = item.shares * asset.price;
-                const pl = val - item.invested;
-                const plPct = (pl / item.invested) * 100;
-                totalInv += item.invested;
-                totalVal += val;
-                return `
-                <tr class="border-b border-gray-800 hover:bg-[#111]">
-                    <td class="p-4 font-bold text-white">${item.symbol}</td>
-                    <td class="p-4 text-right text-gray-400 font-mono">${item.shares.toFixed(4)}</td>
-                    <td class="p-4 text-right text-gray-400 font-mono">${formatCurrency(item.avgCost)}</td>
-                    <td class="p-4 text-right text-white font-mono">${formatCurrency(asset.price)}</td>
-                    <td class="p-4 text-right text-blue-300 font-mono">${formatCurrency(val)}</td>
-                    <td class="p-4 text-right font-mono font-bold ${pl>=0?'text-green-400':'text-red-400'}">
-                        ${pl>=0?'+':''}${formatCurrency(pl)} <span class="text-xs font-normal opacity-70">(${plPct.toFixed(2)}%)</span>
-                    </td>
-                    <td class="p-4 text-center">
-                        <button onclick="app.removePortfolioItem('${item.symbol}')" class="text-red-500 hover:text-red-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                    </td>
-                </tr>`;
-            }).join('');
-
-            const totalPL = totalVal - totalInv;
-            const totalPLPct = totalInv > 0 ? (totalPL / totalInv) * 100 : 0;
-
-            return `
-            <div class="animate-in fade-in space-y-6">
-                 <div class="flex justify-between items-end"><h2 class="text-2xl font-bold text-white">Long Term Portfolio</h2></div>
-                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg"><div class="text-gray-500 text-xs uppercase">Total Invested</div><div class="text-3xl font-mono text-white">${formatCurrency(totalInv)}</div></div>
-                    <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg"><div class="text-gray-500 text-xs uppercase">Current Value</div><div class="text-3xl font-mono text-blue-400">${formatCurrency(totalVal)}</div></div>
-                     <div class="bg-[#0e0e0e] border border-gray-800 p-6 rounded-lg"><div class="text-gray-500 text-xs uppercase">Total P/L</div><div class="text-3xl font-mono ${totalPL>=0?'text-green-400':'text-red-400'}">${totalPL>=0?'+':''}${formatCurrency(totalPL)} (${totalPLPct.toFixed(2)}%)</div></div>
-                 </div>
-
-                 <div class="bg-[#0e0e0e] border border-gray-800 p-4 rounded-lg">
-                    <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i> Add Investment (DCA)</h3>
-                    <form onsubmit="app.addPortfolioItem(event)" class="flex gap-4 items-end">
-                        <div class="flex-1">
-                            <label class="block text-xs text-gray-500 mb-1">Asset</label>
-                            <select id="portSymbol" class="w-full bg-black border border-gray-700 text-white rounded px-3 py-2 text-sm">
-                                <option value="">Select...</option>
-                                ${BASE_POOL.map(a => `<option value="${a.symbol}">${a.symbol} - ${a.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="flex-1">
-                             <label class="block text-xs text-gray-500 mb-1">Amount ($)</label>
-                             <input id="portAmount" type="number" placeholder="5000" class="w-full bg-black border border-gray-700 text-white rounded px-3 py-2 text-sm">
-                        </div>
-                        <button type="submit" class="px-6 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-bold rounded">Add</button>
-                    </form>
-                 </div>
-
-                 <div class="overflow-x-auto bg-[#0e0e0e] border border-gray-800 rounded-lg">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="text-gray-500 text-xs uppercase border-b border-gray-800">
-                                <th class="p-4">Asset</th><th class="p-4 text-right">Shares</th><th class="p-4 text-right">Avg Cost</th>
-                                <th class="p-4 text-right">Price</th><th class="p-4 text-right">Value</th><th class="p-4 text-right">Return</th><th class="p-4 text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows.length ? rows : '<tr><td colspan="7" class="p-8 text-center text-gray-500">No assets yet.</td></tr>'}</tbody>
-                    </table>
-                 </div>
-            </div>`;
-        }
-
-        function renderHeader() {
-             // (No major logic changes, just visual update status)
-             return ''; // Rendered static in HTML body, updated via DOM manipulation in render()
-        }
-
-        // --- APP CONTROLLER ---
-        const app = {
-            setView: (v) => {
-                state.view = v;
-                document.getElementById('nav-dashboard').className = `px-4 py-1.5 rounded text-xs font-bold transition-all ${v === 'dashboard' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-white'}`;
-                document.getElementById('nav-portfolio').className = `px-4 py-1.5 rounded text-xs font-bold transition-all ${v === 'portfolio' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-white'}`;
-                render();
-            },
-            setSort: (key) => {
-                let direction = 'asc';
-                if (state.sortConfig.key === key && state.sortConfig.direction === 'asc') direction = 'desc';
-                updateState({ sortConfig: { key, direction } });
-            },
-            setStrategy: (s) => updateState({ strategy: s }),
-            selectAsset: (s) => {
-                state.selectedAsset = s;
-                state.view = 'detail';
-                render();
-            },
-            handleRefresh: fetchData, 
-            addPortfolioItem: (e) => {
-                e.preventDefault();
-                const sym = document.getElementById('portSymbol').value;
-                const amt = parseFloat(document.getElementById('portAmount').value);
-                if(!sym || !amt) return;
-                
-                const asset = state.allAssets.find(a => a.symbol === sym);
-                if(!asset) { alert("Asset error"); return; }
-                
-                const price = asset.price;
-                const shares = amt / price;
-                
-                const existing = state.portfolio.find(p => p.symbol === sym);
-                let newPort = [];
-                if(existing) {
-                    newPort = state.portfolio.map(p => p.symbol === sym ? { ...p, shares: p.shares + shares, invested: p.invested + amt, avgCost: (p.invested + amt)/(p.shares+shares) } : p);
-                } else {
-                    newPort = [...state.portfolio, { symbol: sym, shares, invested: amt, avgCost: price }];
-                }
-                
-                localStorage.setItem('proTraderPortfolio', JSON.stringify(newPort));
-                state.portfolio = newPort;
-                render();
-            },
-            removePortfolioItem: (sym) => {
-                if(!confirm('Remove this position?')) return;
-                const newPort = state.portfolio.filter(p => p.symbol !== sym);
-                localStorage.setItem('proTraderPortfolio', JSON.stringify(newPort));
-                state.portfolio = newPort;
-                render();
-            }
+            );
         };
 
-        window.app = app;
+        const App = () => {
+            const [stocks, setStocks] = useState([]);
+            const [athMap, setAthMap] = useState({}); 
+            const [portfolio, setPortfolio] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [scanProgress, setScanProgress] = useState(0); 
+            const [isScanning, setIsScanning] = useState(false);
+            const [lastUpdated, setLastUpdated] = useState(null);
+            const [indicators, setIndicators] = useState({}); 
+            const [activeStrategy, setActiveStrategy] = useState('hybrid'); 
+            const [sortConfig, setSortConfig] = useState({ key: 'default', direction: 'desc' });
+            const [selectedStockSymbol, setSelectedStockSymbol] = useState(null);
+            const [stockHistory, setStockHistory] = useState([]); 
+            const [vix, setVix] = useState(21.5); 
+            const [fearGreed, setFearGreed] = useState(35); 
+            const [pfTicker, setPfTicker] = useState("");
+            const [pfShares, setPfShares] = useState("");
+            const [pfAvgCost, setPfAvgCost] = useState("");
+            const [disclaimerAgreed, setDisclaimerAgreed] = useState(false);
 
-        function render() {
-            const root = document.getElementById('root');
-            
-            document.getElementById('last-updated').innerText = state.lastUpdated.toLocaleTimeString();
-            const refreshBtn = document.getElementById('refresh-btn');
-            const refreshText = document.getElementById('refresh-text');
-            const apiStatus = document.getElementById('api-status');
-            
-            if (state.isRefreshing) {
-                refreshBtn.classList.add('opacity-70', 'cursor-not-allowed');
-                refreshBtn.querySelector('i').classList.add('spin-slow');
-                refreshText.innerText = 'FETCHING...';
-                apiStatus.innerText = 'CONNECTING...';
-                apiStatus.className = 'text-yellow-500';
-            } else {
-                refreshBtn.classList.remove('opacity-70', 'cursor-not-allowed');
-                refreshBtn.querySelector('i').classList.remove('spin-slow');
-                refreshText.innerText = 'REFRESH DATA';
+            useEffect(() => {
+                const agreed = localStorage.getItem('proTraderDisclaimerAgreed');
+                if (agreed) setDisclaimerAgreed(true);
+
+                const storedPf = localStorage.getItem('proTraderPortfolio');
+                if (storedPf) setPortfolio(JSON.parse(storedPf));
+                const storedAth = localStorage.getItem('proTraderAthMap');
+                const storedInd = localStorage.getItem('proTraderIndicators');
+                if (storedInd) setIndicators(JSON.parse(storedInd));
+                if (storedAth) setAthMap(JSON.parse(storedAth)); else setAthMap(SEED_ATH);
                 
-                if (state.apiStatus.includes('ONLINE')) apiStatus.className = 'text-green-500';
-                else if (state.apiStatus.includes('OFFLINE')) apiStatus.className = 'text-orange-500';
-                else apiStatus.className = 'text-red-500';
-                
-                apiStatus.innerText = state.apiStatus.toUpperCase();
-            }
+                const initStocks = INITIAL_TICKERS.map(sym => {
+                    const ath = (storedAth && JSON.parse(storedAth)[sym]) || SEED_ATH[sym] || 100;
+                    return processStockData(sym, ath, ath); 
+                });
+                setStocks(initStocks);
+            }, []);
 
-            let content = '';
-            if (state.view === 'dashboard') content = renderDashboard();
-            else if (state.view === 'detail') content = renderDetail();
-            else if (state.view === 'portfolio') content = renderPortfolio();
+            useEffect(() => { if (Object.keys(athMap).length > 0) localStorage.setItem('proTraderAthMap', JSON.stringify(athMap)); }, [athMap]);
+            useEffect(() => { if (Object.keys(indicators).length > 0) localStorage.setItem('proTraderIndicators', JSON.stringify(indicators)); }, [indicators]);
+
+            useEffect(() => {
+                setStocks(prev => prev.map(s => processStockData(s.symbol, s.price, s.ath)));
+            }, [activeStrategy, indicators]); 
+
+            const handleAgree = () => {
+                localStorage.setItem('proTraderDisclaimerAgreed', 'true');
+                setDisclaimerAgreed(true);
+            };
+
+            const processStockData = (symbol, price, ath) => {
+                const stockInd = indicators[symbol] || {};
+                const sma200 = stockInd.sma200 || 0;
+                const rsi = stockInd.rsi || 50;
+                const stats = calculateStatus(price, ath, vix, rsi, sma200, activeStrategy, symbol);
+                const marketCap = REFERENCE_CAPS[symbol] ? REFERENCE_CAPS[symbol] * 1000000000000 : 50000000000; 
+                return { symbol, price, ath, marketCap, discount: ath - price, prevClose: price * 0.99, indicators: stockInd, stats };
+            };
+
+            const calculateMarketMetrics = (stocks) => {
+                if (!stocks || stocks.length === 0) return;
+                const topStocks = stocks.slice(0, 10);
+                const avgDrop = topStocks.reduce((acc, s) => acc + s.stats.dropPct, 0) / topStocks.length;
+                const newVix = 14 + (avgDrop * 1.2);
+                const newFearGreed = Math.max(5, Math.min(95, 85 - (avgDrop * 2.5)));
+                setVix(parseFloat(newVix.toFixed(2)));
+                setFearGreed(Math.round(newFearGreed));
+            };
+
+            const fetchLiveData = async () => {
+                setLoading(true);
+                const symbols = INITIAL_TICKERS.join(',');
+                try {
+                    const response = await fetch(`https://api.marketstack.com/v2/eod?access_key=${API_KEY}&symbols=${symbols}&limit=100`);
+                    if (!response.ok) throw new Error("Network Error");
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error.message);
+
+                    const updatedAthMap = { ...athMap };
+                    const apiDataMap = {};
+                    data.data.forEach(item => {
+                        if (!apiDataMap[item.symbol] || new Date(item.date) > new Date(apiDataMap[item.symbol].date)) {
+                            apiDataMap[item.symbol] = item;
+                        }
+                    });
+
+                    const newStocks = INITIAL_TICKERS.map(sym => {
+                        const apiItem = apiDataMap[sym];
+                        const existingStock = stocks.find(s => s.symbol === sym) || {};
+                        let price = existingStock.price;
+                        let dayHigh = 0;
+                        if (apiItem) { price = apiItem.close; dayHigh = apiItem.high; }
+                        let ath = updatedAthMap[sym] || SEED_ATH[sym] || price * 1.1;
+                        if (dayHigh && dayHigh > ath) { ath = dayHigh; updatedAthMap[sym] = ath; }
+                        if (price > ath) { ath = price; updatedAthMap[sym] = ath; }
+                        return processStockData(sym, price, ath);
+                    });
+
+                    setAthMap(updatedAthMap);
+                    setStocks(newStocks); 
+                    calculateMarketMetrics(newStocks);
+                    setLastUpdated(new Date());
+                } catch (err) {
+                    alert(`Live Data Error: ${err.message}. Showing static data.`);
+                } finally {
+                    setLoading(false);
+                }
+            };
             
-            root.innerHTML = content;
-            if(window.lucide) window.lucide.createIcons();
-        }
+            const runDeepScan = async () => {
+                if(isScanning) return;
+                if(!confirm("Start Deep Scan? (~4 API Calls)")) return;
+                setIsScanning(true); setScanProgress(5); 
+                const chunkSize = 3;
+                const chunks = [];
+                for (let i = 0; i < INITIAL_TICKERS.length; i += chunkSize) chunks.push(INITIAL_TICKERS.slice(i, i + chunkSize));
+                const foundHighs = { ...athMap };
+                const newIndicators = { ...indicators };
+                const latestPrices = {};
 
-        init();
+                try {
+                    for (let i = 0; i < chunks.length; i++) {
+                        const chunkSymbols = chunks[i].join(',');
+                        const url = `https://api.marketstack.com/v2/eod?access_key=${API_KEY}&symbols=${chunkSymbols}&limit=1000`;
+                        const response = await fetch(url);
+                        if (!response.ok) throw new Error("API Error");
+                        const data = await response.json();
+                        if (data.error) throw new Error(data.error.message);
 
+                        if(data.data) {
+                            const symbolData = {};
+                            data.data.forEach(item => {
+                                if(!symbolData[item.symbol]) symbolData[item.symbol] = [];
+                                symbolData[item.symbol].push(item);
+                                if (!foundHighs[item.symbol] || item.high > foundHighs[item.symbol]) foundHighs[item.symbol] = item.high;
+                            });
+
+                            Object.keys(symbolData).forEach(sym => {
+                                const history = symbolData[sym].sort((a,b) => new Date(b.date) - new Date(a.date)); 
+                                if (history.length > 0) latestPrices[sym] = history[0].close;
+                                let sma200 = 0;
+                                if (history.length >= 200) {
+                                    const slice = history.slice(0, 200);
+                                    sma200 = slice.reduce((acc, val) => acc + val.close, 0) / 200;
+                                }
+                                let rvol = 0;
+                                if (history.length >= 31) {
+                                    const avgVol = history.slice(1, 31).reduce((acc, val) => acc + val.volume, 0) / 30;
+                                    rvol = avgVol > 0 ? (history[0].volume / avgVol) : 0;
+                                }
+                                newIndicators[sym] = { sma200, rvol, rsi: 50 }; 
+                            });
+                        }
+                        setScanProgress(Math.round(((i + 1) / chunks.length) * 100));
+                        await new Promise(r => setTimeout(r, 200));
+                    }
+                    setAthMap(foundHighs); setIndicators(newIndicators);
+                    setStocks(prev => {
+                         const updatedList = prev.map(s => {
+                            const newAth = foundHighs[s.symbol] || s.ath;
+                            const newPrice = latestPrices[s.symbol] || s.price; 
+                            const stockInd = newIndicators[s.symbol] || {};
+                            const stats = calculateStatus(newPrice, newAth, vix, 50, stockInd.sma200, activeStrategy, s.symbol);
+                            return { ...s, price: newPrice, ath: newAth, stats, discount: newAth - newPrice };
+                        });
+                        calculateMarketMetrics(updatedList);
+                        return updatedList;
+                    });
+                    alert("Deep Scan Complete. Data updated.");
+                } catch (err) { alert(`Scan interrupted: ${err.message}`); } 
+                finally { setIsScanning(false); setScanProgress(0); }
+            };
+
+            const fetchStockHistory = async (symbol) => {
+                try {
+                    const response = await fetch(`https://api.marketstack.com/v2/eod?access_key=${API_KEY}&symbols=${symbol}&limit=100`);
+                    const data = await response.json();
+                    if(data.data) {
+                        setStockHistory(data.data);
+                        let maxHistHigh = 0;
+                        data.data.forEach(d => {
+                             if (d.high > maxHistHigh) maxHistHigh = d.high;
+                             if (d.close > maxHistHigh) maxHistHigh = d.close;
+                        });
+                        setAthMap(prev => {
+                            if (!prev[symbol] || maxHistHigh > prev[symbol]) {
+                                const newMap = { ...prev, [symbol]: maxHistHigh };
+                                setStocks(prevStocks => prevStocks.map(s => {
+                                    if (s.symbol === symbol) {
+                                        const stats = calculateStatus(s.price, maxHistHigh, vix, 50, s.indicators?.sma200 || 0, activeStrategy, symbol);
+                                        return { ...s, ath: maxHistHigh, stats, discount: maxHistHigh - s.price };
+                                    }
+                                    return s;
+                                }));
+                                return newMap;
+                            }
+                            return prev;
+                        });
+                    } else setStockHistory([]); 
+                } catch(e) { setStockHistory([]); }
+            };
+
+            const handleStockClick = (stock) => { setSelectedStockSymbol(stock.symbol); fetchStockHistory(stock.symbol); };
+
+            const handlePortfolioAdd = (e) => {
+                e.preventDefault();
+                if (!pfTicker || !pfShares || !pfAvgCost) return;
+                const tickerUpper = pfTicker.toUpperCase();
+                const sharesFloat = parseFloat(pfShares);
+                const costFloat = parseFloat(pfAvgCost);
+                const existingIndex = portfolio.findIndex(p => p.symbol === tickerUpper);
+                const newPortfolio = [...portfolio];
+
+                if (existingIndex >= 0) {
+                    const existingItem = portfolio[existingIndex];
+                    const totalShares = existingItem.shares + sharesFloat;
+                    const totalCost = (existingItem.shares * existingItem.avgCost) + (sharesFloat * costFloat);
+                    const newAvg = totalCost / totalShares;
+                    newPortfolio[existingIndex] = { ...existingItem, shares: totalShares, avgCost: newAvg };
+                } else {
+                    newPortfolio.push({ id: Date.now(), symbol: tickerUpper, shares: sharesFloat, avgCost: costFloat });
+                }
+                setPortfolio(newPortfolio);
+                localStorage.setItem('proTraderPortfolio', JSON.stringify(newPortfolio));
+                setPfTicker(""); setPfShares(""); setPfAvgCost("");
+            };
+
+            const removePortfolioItem = (id) => {
+                const newPf = portfolio.filter(p => p.id !== id);
+                setPortfolio(newPf);
+                localStorage.setItem('proTraderPortfolio', JSON.stringify(newPf));
+            };
+
+            const getPortfolioSummary = () => {
+                let totalInvested = 0; let currentValue = 0;
+                portfolio.forEach(item => {
+                    totalInvested += item.shares * item.avgCost;
+                    const stock = stocks.find(s => s.symbol === item.symbol);
+                    const currentPrice = stock ? stock.price : item.avgCost; 
+                    currentValue += item.shares * currentPrice;
+                });
+                return { totalInvested, currentValue, pl: currentValue - totalInvested };
+            };
+
+            const pfSummary = getPortfolioSummary();
+
+            // 1. Get the list of stocks recommended by the current strategy (The "Constituents")
+            const strategyConstituents = useMemo(() => {
+                let pool = [];
+                // Pool Selection
+                if (activeStrategy === 'cap' || activeStrategy === 'pro_logic') {
+                    pool = stocks.filter(s => INITIAL_TICKERS.indexOf(s.symbol) < 20);
+                } else {
+                    pool = [...stocks];
+                }
+
+                // Strategy Ranking (The "Why" it's in the list)
+                pool.sort((a, b) => {
+                    if (activeStrategy === 'hybrid') {
+                        const capA = (REFERENCE_CAPS[a.symbol] || 0.1);
+                        const capB = (REFERENCE_CAPS[b.symbol] || 0.1);
+                        return (capB * b.stats.dropPct) - (capA * a.stats.dropPct);
+                    }
+                    if (activeStrategy === 'deep_value') return b.stats.dropPct - a.stats.dropPct;
+                    // For others, rely on the calculated Score/Rating
+                    return b.stats.zoneScore - a.stats.zoneScore;
+                });
+
+                // Slice
+                const limit = activeStrategy === 'ultimate_alpha' ? 5 : 10;
+                return pool.slice(0, limit);
+            }, [stocks, activeStrategy]);
+
+            // 2. Sort the visible list based on user interaction (The "View")
+            const sortedTableStocks = useMemo(() => {
+                let list = [...strategyConstituents];
+                const { key, direction } = sortConfig;
+
+                if (key === 'default') return list; // Keep strategy rank
+
+                list.sort((a, b) => {
+                    let valA, valB;
+                    if (key === 'symbol') {
+                        valA = a.symbol; valB = b.symbol;
+                        return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                    } else if (key === 'price') { valA = a.price; valB = b.price; }
+                    else if (key === 'ath') { valA = a.ath; valB = b.ath; }
+                    else if (key === 'cap') { valA = a.marketCap; valB = b.marketCap; }
+                    else if (key === 'drop') { valA = a.stats.dropPct; valB = b.stats.dropPct; }
+                    else if (key === 'discount') { valA = a.discount; valB = b.discount; }
+                    else if (key === 'zone' || key === 'rating') { valA = a.stats.zoneScore; valB = b.stats.zoneScore; }
+                    else if (key === 'trend') { valA = a.indicators?.sma200 || 0; valB = b.indicators?.sma200 || 0; }
+                    else if (key === 'vol') { valA = a.indicators?.rvol || 0; valB = b.indicators?.rvol || 0; }
+                    else { valA = a.stats.dropPct; valB = b.stats.dropPct; }
+                    
+                    if (direction === 'asc') return valA - valB;
+                    return valB - valA;
+                });
+                return list;
+            }, [strategyConstituents, sortConfig]);
+
+            const handleSortChange = (key) => {
+                let direction = 'desc';
+                if (sortConfig.key === key) direction = sortConfig.direction === 'desc' ? 'asc' : 'desc';
+                setSortConfig({ key, direction });
+            };
+
+            const SortHeader = ({ label, sortKey, currentConfig, onSort }) => {
+                const isActive = currentConfig.key === sortKey;
+                const icon = isActive ? (currentConfig.direction === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down') : 'fa-sort text-slate-500';
+                return (
+                    <th className={`px-6 py-4 sortable ${isActive ? 'text-neon-blue' : 'text-slate-400'}`} onClick={() => onSort(sortKey)}>
+                        <div className="flex items-center gap-2 text-xs uppercase tracking-wider font-bold">
+                            {label}<i className={`fa-solid ${icon}`}></i>
+                        </div>
+                    </th>
+                );
+            };
+
+            const StrategyButton = ({ id, label, icon, isGold }) => (
+                <button 
+                    onClick={() => { setActiveStrategy(id); setSortConfig({key:'default', direction:'desc'}); }}
+                    className={`btn-strategy px-4 py-2.5 rounded-lg flex items-center gap-2 font-bold text-sm border 
+                        ${activeStrategy === id 
+                            ? (isGold 
+                                ? 'bg-yellow-500/20 border-yellow-500 text-yellow-400 shadow-glow-gold' 
+                                : 'bg-neon-blue/20 border-neon-blue text-neon-blue shadow-glow')
+                            : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:bg-slate-800 hover:border-slate-500'}`}
+                >
+                    <i className={`fa-solid ${icon}`}></i> {label}
+                </button>
+            );
+
+            const activeStock = selectedStockSymbol ? stocks.find(s => s.symbol === selectedStockSymbol) : null;
+
+            return (
+                <div className="pb-20">
+                    {!disclaimerAgreed && <DisclaimerModal onAgree={handleAgree} />}
+                    <nav className="glass-header sticky top-0 z-40">
+                        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-gradient-to-br from-neon-blue to-blue-600 w-10 h-10 rounded-xl flex items-center justify-center text-black font-bold text-xl shadow-glow">
+                                    <i className="fa-solid fa-chart-line"></i>
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold text-white tracking-wide">PRO TRADER <span className="text-neon-blue">ALPHA</span></h1>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">Institutional Terminal</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="hidden md:flex items-center gap-4 glass-panel px-4 py-2 rounded-xl">
+                                    <div className="flex flex-col items-center px-2">
+                                        <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">VIX Index</div>
+                                        <div className={`font-mono font-bold text-lg ${vix > 20 ? 'text-red-400 animate-pulse' : 'text-neon-green'}`}>{vix}</div>
+                                    </div>
+                                    <div className="w-px h-8 bg-slate-700"></div>
+                                    <div className="flex flex-col items-center px-2">
+                                        <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Sentiment</div>
+                                        <div className={`font-bold text-sm ${fearGreed < 40 ? 'text-red-400' : 'text-neon-green'}`}>
+                                            {fearGreed} <span className="opacity-50 text-[10px]">{fearGreed < 40 ? "FEAR" : "GREED"}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onClick={() => fetchLiveData()} disabled={loading || isScanning} 
+                                    className={`btn-action bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg flex items-center gap-2 text-sm border border-white/10 ${loading ? 'opacity-50' : ''}`}>
+                                    {loading ? <div className="loader"></div> : <i className="fa-solid fa-rotate"></i>} LIVE DATA
+                                </button>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-7xl mx-auto px-4 mt-8 space-y-8">
+                        <div className="flex flex-col gap-6">
+                            <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                                        <i className="fa-solid fa-layer-group text-slate-500"></i> Market Scanner
+                                    </h2>
+                                    <p className="text-sm text-slate-400 mt-1">
+                                        Top {activeStrategy === 'ultimate_alpha' ? '5' : '10'} Opportunities • {activeStrategy.replace('_', ' ').toUpperCase()} Strategy
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2 justify-end">
+                                    <button onClick={runDeepScan} disabled={isScanning} className="btn-strategy px-4 py-2.5 rounded-lg flex items-center gap-2 font-bold text-sm bg-slate-800 text-slate-300 border border-slate-700 hover:border-neon-blue hover:text-white">
+                                        {isScanning ? <><span className="animate-spin">⟳</span> {scanProgress}%</> : <><i className="fa-solid fa-radar"></i> Deep Scan</>}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div className="flex flex-wrap gap-2 p-1 bg-slate-900/50 rounded-xl border border-slate-800 w-fit">
+                                <StrategyButton id="ultimate_alpha" label="Ultimate Alpha" icon="fa-trophy" isGold={true} />
+                                <StrategyButton id="pro_logic" label="Pro Logic" icon="fa-crown" />
+                                <StrategyButton id="trend_pullback" label="Trend Pullback" icon="fa-arrow-trend-up" />
+                                <StrategyButton id="hybrid" label="Hybrid" icon="fa-balance-scale" />
+                                <StrategyButton id="cap" label="Market Cap" icon="fa-building" />
+                                <StrategyButton id="deep_value" label="Deep Value" icon="fa-tags" />
+                            </div>
+                        </div>
+
+                        {isScanning && (
+                            <div className="w-full bg-slate-800 rounded-full h-1 mt-[-20px] mb-4 overflow-hidden relative">
+                                <div className="absolute top-0 left-0 h-full bg-neon-blue shadow-[0_0_15px_#00f3ff] progress-bar" style={{ width: `${scanProgress}%` }}></div>
+                            </div>
+                        )}
+
+                        <div className="glass-panel rounded-2xl overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm text-slate-300">
+                                    <thead className="glass-table-header border-b border-slate-700/50">
+                                        <tr>
+                                            <SortHeader label="Symbol" sortKey="symbol" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="Price" sortKey="price" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="ATH" sortKey="ath" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="M. Cap" sortKey="cap" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="Trend" sortKey="trend" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="Drawdown" sortKey="drop" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="Discount" sortKey="discount" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="Zone" sortKey="zone" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label={activeStrategy === 'ultimate_alpha' ? 'Conviction & Why' : 'Rating'} sortKey="rating" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <th className="px-6 py-4 text-right text-slate-400 font-bold uppercase text-xs">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/50">
+                                        {sortedTableStocks.map((stock, index) => {
+                                            const diff = stock.price - stock.ath;
+                                            const diffColor = diff >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                            const diffText = diff >= 0 ? `+${formatCurrency(diff)}` : formatCurrency(diff);
+                                            const sma200 = stock.indicators?.sma200;
+                                            
+                                            return (
+                                                <tr key={stock.symbol} onClick={() => handleStockClick(stock)} className="stock-row group cursor-pointer">
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-slate-600 font-mono w-4">{(index + 1).toString().padStart(2, '0')}</span>
+                                                            <StockLogo symbol={stock.symbol} />
+                                                            <div>
+                                                                <div className="font-bold text-white text-base">{stock.symbol}</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 font-mono text-white">{formatCurrency(stock.price)}</td>
+                                                    <td className="px-6 py-4 font-mono text-slate-500">{formatCurrency(stock.ath)}</td>
+                                                    <td className="px-6 py-4 font-mono text-indigo-300">{formatMarketCap(stock.marketCap)}</td>
+                                                    
+                                                    <td className="px-6 py-4">
+                                                        {sma200 > 0 ? (
+                                                            stock.price > sma200 
+                                                                ? <span className="text-emerald-400 font-bold text-[10px] bg-emerald-900/20 px-2 py-1 rounded border border-emerald-900"><i className="fa-solid fa-arrow-trend-up"></i> UP</span>
+                                                                : <span className="text-red-400 font-bold text-[10px] bg-red-900/20 px-2 py-1 rounded border border-red-900"><i className="fa-solid fa-arrow-trend-down"></i> DOWN</span>
+                                                        ) : <span className="text-slate-700 text-[10px]">—</span>}
+                                                    </td>
+
+                                                    <td className="px-6 py-4"><span className={`font-bold ${stock.stats.dropPct > 15 ? 'text-red-400' : stock.stats.dropPct > 5 ? 'text-yellow-400' : 'text-slate-400'}`}>-{stock.stats.dropPct.toFixed(2)}%</span></td>
+                                                    <td className={`px-6 py-4 font-bold font-mono ${diffColor}`}>{diffText}</td>
+                                                    <td className="px-6 py-4"><span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${getZoneColorClass(stock.stats.dropPct)}`}>{getDropZoneLabel(stock.stats.dropPct)}</span></td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex flex-col">
+                                                            <span className={`text-xs font-bold ${stock.stats.color}`}>{stock.stats.rating}</span>
+                                                            {activeStrategy === 'ultimate_alpha' && stock.stats.reason && (
+                                                                <span className="text-[9px] text-slate-400 mt-1 opacity-75">{stock.stats.reason}</span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <button className="text-slate-600 group-hover:text-neon-blue transition-colors bg-slate-800 p-2 rounded-lg group-hover:bg-slate-700">
+                                                            <i className="fa-solid fa-chart-simple"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="bg-slate-900/80 p-3 text-center text-xs text-slate-500 border-t border-slate-800">
+                                Showing Top {activeStrategy === 'ultimate_alpha' ? '5' : '10'} Opportunities • Strategy: <span className="text-white font-bold uppercase">{activeStrategy.replace('_', ' ')}</span> • Pool Size: {activeStrategy === 'cap' || activeStrategy === 'pro_logic' ? '20' : '50'}
+                            </div>
+                        </div>
+
+                        <div className="glass-panel rounded-2xl p-6 border-t-2 border-t-blue-500">
+                            <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><i className="fa-solid fa-wallet text-blue-500"></i> Portfolio Tracker</h3>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <form onSubmit={handlePortfolioAdd} className="space-y-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Ticker</label>
+                                        <input list="ticker-list" type="text" required value={pfTicker} onChange={e => setPfTicker(e.target.value)} 
+                                            className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white focus:border-neon-blue focus:outline-none transition-colors mt-1" placeholder="e.g. AAPL" />
+                                        <datalist id="ticker-list">
+                                            {INITIAL_TICKERS.map(t => <option key={t} value={t} />)}
+                                        </datalist>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Shares</label><input type="number" step="any" required value={pfShares} onChange={e => setPfShares(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white focus:border-neon-blue focus:outline-none mt-1" placeholder="0.00" /></div>
+                                        <div><label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Avg Cost</label><input type="number" step="any" required value={pfAvgCost} onChange={e => setPfAvgCost(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white focus:border-neon-blue focus:outline-none mt-1" placeholder="$0.00" /></div>
+                                    </div>
+                                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition-colors shadow-lg mt-2">ADD POSITION</button>
+                                </form>
+                                <div className="lg:col-span-2">
+                                    <div className="overflow-x-auto rounded-xl border border-slate-700/50">
+                                        <table className="w-full text-left text-sm text-slate-400">
+                                            <thead className="bg-slate-800 text-[10px] uppercase font-bold text-slate-500">
+                                                <tr><th className="px-4 py-3">Asset</th><th className="px-4 py-3">Shares</th><th className="px-4 py-3">Cost Basis</th><th className="px-4 py-3">Current</th><th className="px-4 py-3">P&L</th><th className="px-4 py-3 text-right">Action</th></tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-800/50 bg-slate-900/30">
+                                                {portfolio.map(item => {
+                                                    const stock = stocks.find(s => s.symbol === item.symbol);
+                                                    const currentPrice = stock ? stock.price : item.avgCost; 
+                                                    const pl = (currentPrice - item.avgCost) * item.shares;
+                                                    const plPct = item.avgCost > 0 ? (pl / (item.shares * item.avgCost)) * 100 : 0;
+                                                    
+                                                    return (
+                                                        <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
+                                                            <td className="px-4 py-3 font-bold text-white flex items-center gap-2"><StockLogo symbol={item.symbol} /> {item.symbol}</td>
+                                                            <td className="px-4 py-3">{item.shares}</td>
+                                                            <td className="px-4 py-3">{formatCurrency(item.avgCost)}</td>
+                                                            <td className="px-4 py-3 text-white">{formatCurrency(currentPrice)}</td>
+                                                            <td className={`px-4 py-3 font-bold ${pl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pl >= 0 ? '+' : ''}{formatCurrency(pl)} <span className="text-[10px] opacity-70 ml-1">({plPct.toFixed(2)}%)</span></td>
+                                                            <td className="px-4 py-3 text-right"><button onClick={() => removePortfolioItem(item.id)} className="text-slate-600 hover:text-red-400 transition-colors"><i className="fa-solid fa-trash-can"></i></button></td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                {portfolio.length === 0 && <tr><td colSpan="6" className="px-4 py-8 text-center text-slate-600 italic">No open positions. Add one to start tracking.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div className="mt-6 flex flex-wrap justify-end gap-6 pt-4 border-t border-slate-700/50">
+                                        <div className="text-right"><div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Total Invested</div><div className="text-xl font-bold text-white">{formatCurrency(pfSummary.totalInvested)}</div></div>
+                                        <div className="text-right"><div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Current Value</div><div className="text-xl font-bold text-blue-400">{formatCurrency(pfSummary.currentValue)}</div></div>
+                                        <div className="text-right bg-slate-800 px-4 py-1 rounded-lg border border-slate-700"><div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Total P&L</div><div className={`text-2xl font-bold ${pfSummary.pl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pfSummary.pl >= 0 ? '+' : ''}{formatCurrency(pfSummary.pl)}</div></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+
+                    {activeStock && <ChartView stock={activeStock} historyData={stockHistory} onClose={() => setSelectedStockSymbol(null)} />}
+                    
+                    <footer className="fixed bottom-0 w-full bg-[#020617] border-t border-slate-800 p-2 text-center text-[10px] text-slate-600 z-50">
+                        Pro Trader Alpha v2.0 • Data provided by Marketstack • 15 Minute Delayed / EOD • Not Financial Advice
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
