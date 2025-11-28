@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Trader Alpha - Subscriber Terminal</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'neon-blue': '#00f3ff',
+                        'neon-purple': '#bc13fe',
+                        'neon-green': '#0aff68',
+                        'glass-dark': 'rgba(13, 17, 23, 0.95)',
+                        'glass-light': 'rgba(255, 255, 255, 0.05)',
+                    },
+                    boxShadow: {
+                        'glow': '0 0 15px rgba(0, 243, 255, 0.3)',
+                        'glow-gold': '0 0 20px rgba(234, 179, 8, 0.4)',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <!-- AWS SDK for JavaScript (v3) for R2 Connection -->
+    <script src="https://unpkg.com/@aws-sdk/client-s3@3.363.0/dist-browser/client-s3.js"></script>
+
+    <style>
+        body { 
+            background: radial-gradient(circle at top center, #1e293b, #020617);
+            color: #e2e8f0; 
+            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+            min-height: 100vh;
+        }
+        .glass-panel { 
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+            backdrop-filter: blur(12px); 
+            border: 1px solid rgba(255, 255, 255, 0.08); 
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        .glass-header {
+            background: rgba(2, 6, 23, 0.9);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .glass-table-header { background: rgba(255, 255, 255, 0.03); }
+        .btn-strategy { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .btn-strategy:active { transform: scale(0.98); }
+        tr.stock-row { transition: all 0.2s; }
+        tr.stock-row:hover { background-color: rgba(255, 255, 255, 0.05); transform: translateX(4px); }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        th.sortable { cursor: pointer; user-select: none; transition: color 0.2s; }
+        th.sortable:hover { color: #00f3ff; text-shadow: 0 0 8px rgba(0,243,255,0.5); }
+        .logo-placeholder {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: bold; font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- CONFIGURATION ---
+        const API_KEY = '29f6e55e359cea3c32dfb279a4901516'; 
+        
+        const INITIAL_TICKERS = [
+            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "BRK.B", 
+            "JPM", "V", "JNJ", "WMT", "PG", "MA", "UNH", "HD", "CVX", "MRK", "ABBV", "KO",
+            "PEP", "COST", "AVGO", "MCD", "CSCO", "ACN", "TMO", "DIS", "ABT", "DHR", 
+            "LIN", "NKE", "PFE", "XOM", "ORCL", "CRM", "BAC", "CMCSA", "NFLX", "AMD", 
+            "INTC", "QCOM", "TXN", "HON", "UPS", "UNP", "LOW", "PM", "SBUX", "IBM"
+        ];
+
+        const SEED_ATH = {
+            "AAPL": 237.23, "MSFT": 468.35, "GOOGL": 191.75, "AMZN": 215.00,
+            "NVDA": 150.00, "TSLA": 414.50, "META": 602.95, "BRK.B": 484.82,
+            "JPM": 225.48, "V": 305.00, "JNJ": 175.97, "WMT": 85.00,
+            "PG": 177.79, "MA": 530.00, "UNH": 600.00, "HD": 421.00,
+            "CVX": 187.00, "MRK": 133.00, "ABBV": 195.00, "KO": 73.00
+        };
+
+        const REFERENCE_CAPS = {
+            "AAPL": 3.4, "MSFT": 3.1, "NVDA": 3.0, "GOOGL": 2.0, "AMZN": 1.9, 
+            "META": 1.4, "BRK.B": 0.9, "TSLA": 0.8, "LLY": 0.8, "AVGO": 0.75, 
+            "JPM": 0.6, "V": 0.55, "UNH": 0.5, "WMT": 0.5, "MA": 0.45, 
+            "PG": 0.4, "JNJ": 0.38, "HD": 0.35, "MRK": 0.3, "CVX": 0.28, 
+            "ABBV": 0.3, "KO": 0.28, "PEP": 0.23, "COST": 0.38, "DIS": 0.17
+        };
+
+        // --- HELPER FUNCTIONS ---
+        const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        const formatMarketCap = (val) => val >= 1000000000000 ? `$${(val / 1000000000000).toFixed(1)}T` : `$${(val / 1000000000).toFixed(1)}B`;
+        const simpleHash = (str) => {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = (hash << 5) - hash + char;
+                hash = hash & hash;
+            }
+            return Math.abs(hash).toString(16);
+        };
+
+        // --- R2 CLIENT SETUP ---
+        let s3Client = null;
+        let BUCKET_NAME = "";
+
+        const initR2 = () => {
+            const config = JSON.parse(localStorage.getItem('proTraderR2Config') || '{}');
+            if (config.endpoint && config.accessKeyId && config.secretAccessKey && config.bucket) {
+                const { S3 } = window.AWS; // Access via global AWS object from script
+                // Note: Using browser fetch, we rely on the generic structure. 
+                // The imported SDK places 'S3' in the global scope or module scope depending on build.
+                // We will construct the client manually using the imported module if available
+                try {
+                    const { S3Client } = window.AWS_SDK_S3 || window; // Fallback lookup
+                    // Actually using the UMD build exposes `window.AWS.S3` usually or similar.
+                    // Let's assume standard fetch for simplicity if SDK fails or use the global S3Client from the script tag.
+                } catch(e) {}
+                
+                // Initialize client from the module import
+                s3Client = new window.window.S3Client({
+                    region: "auto",
+                    endpoint: config.endpoint,
+                    credentials: {
+                        accessKeyId: config.accessKeyId,
+                        secretAccessKey: config.secretAccessKey,
+                    },
+                });
+                BUCKET_NAME = config.bucket;
+                return true;
+            }
+            return false;
+        };
+
+        // --- STRATEGY LOGIC ---
+        const calculateStatus = (current, ath, vix, rsi = 50, sma200 = 0, strategy = 'hybrid', symbol = '') => {
+            const dropPct = ath > 0 ? ((ath - current) / ath) * 100 : 0;
+            let rating = "WATCH";
+            let color = "text-slate-500";
+            let zoneScore = 1; 
+            let reason = "";
+
+            if (dropPct < 5) { rating = "WATCH"; color = "text-slate-400"; zoneScore = 1; }
+            else if (dropPct >= 5 && dropPct < 10) { rating = "DIP BUY"; color = "text-yellow-400"; zoneScore = 2; }
+            else if (dropPct >= 10 && dropPct < 15) { rating = "ACCUMULATE"; color = "text-cyan-400"; zoneScore = 3; }
+            else if (dropPct >= 15 && dropPct < 20) { rating = "STRONG BUY"; color = "text-emerald-400 font-bold"; zoneScore = 4; }
+            else if (dropPct >= 20) { rating = "DEEP VALUE"; color = "text-blue-400 font-bold"; zoneScore = 5; }
+            
+            if (strategy === 'cap') {
+                if (vix > 20 && dropPct > 5) { rating = "SAFE ENTRY"; color = "text-emerald-400 font-bold"; }
+            } else if (strategy === 'deep_value') {
+                if (dropPct < 15) { rating = "WAIT"; color = "text-slate-500"; }
+            } else if (strategy === 'trend_pullback') {
+                if (sma200 > 0) {
+                    if (current > sma200 && dropPct > 5) { rating = "TREND ENTRY"; color = "text-neon-blue font-extrabold animate-pulse shadow-glow"; zoneScore = 10; }
+                    else if (current < sma200) { rating = "BROKEN TREND"; color = "text-red-500"; zoneScore = 0; }
+                    else { rating = "WAITING"; color = "text-slate-500"; }
+                } else {
+                    rating = "SCAN REQ"; color = "text-orange-300";
+                }
+            } else if (strategy === 'pro_logic') {
+                if (dropPct >= 5 && dropPct <= 20) { rating = "PRIME SETUP"; color = "text-neon-purple font-extrabold animate-pulse"; zoneScore = 10; }
+                else if (dropPct > 20 && dropPct < 30) { rating = "VALUE"; color = "text-blue-400"; }
+                else if (dropPct > 30) { rating = "CAUTION"; color = "text-red-400"; }
+                else { rating = "EXPENSIVE"; color = "text-slate-500"; }
+            } else if (strategy === 'ultimate_alpha') {
+                const mCap = REFERENCE_CAPS[symbol] || 0.1; 
+                const capScore = Math.min(20, mCap * 10);
+                let valueScore = 0;
+                if (dropPct >= 10 && dropPct <= 25) valueScore = 40;
+                else if (dropPct >= 5 && dropPct < 10) valueScore = 20;
+                else if (dropPct > 25 && dropPct < 35) valueScore = 20;
+                else if (dropPct > 35) valueScore = 5; 
+                
+                let trendScore = 0;
+                if (sma200 > 0 && current > sma200) trendScore = 25;
+                let volScore = 0;
+                if (vix > 18) volScore = 15; 
+                const totalScore = capScore + valueScore + trendScore + volScore;
+                const reasons = [];
+                if (mCap > 0.5) reasons.push("💎 Mega Cap");
+                if (valueScore === 40) reasons.push("📉 Prime Discount");
+                else if (valueScore === 20) reasons.push("📉 Deep Value");
+                if (trendScore > 0) reasons.push("📈 Bull Trend");
+                rating = `${totalScore.toFixed(0)}/100`;
+                reason = reasons.join(" • ");
+                zoneScore = totalScore; 
+                if (totalScore > 80) color = "text-yellow-400 font-extrabold drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"; 
+                else if (totalScore > 60) color = "text-emerald-400 font-bold";
+                else color = "text-slate-400";
+            }
+
+            if (strategy !== 'trend_pullback' && strategy !== 'pro_logic' && strategy !== 'ultimate_alpha' && (vix > 25 || rsi < 30) && dropPct > 10) { 
+                rating = "SNIPER ENTRY"; color = "text-red-500 font-extrabold animate-pulse"; zoneScore = 6; 
+            }
+
+            return { dropPct, rating, color, zoneScore, reason };
+        };
+
+        const getDropZoneLabel = (pct) => {
+            if (pct < 5) return "0-5%";
+            if (pct < 10) return "5-10%";
+            if (pct < 15) return "10-15%";
+            if (pct < 20) return "15-20%";
+            return "20%+";
+        };
+
+        const getZoneColorClass = (pct) => {
+            if (pct < 5) return "bg-slate-800 border-slate-700 text-slate-400";
+            if (pct < 10) return "bg-yellow-900/30 border-yellow-600/50 text-yellow-400";
+            if (pct < 15) return "bg-cyan-900/30 border-cyan-600/50 text-cyan-400";
+            if (pct < 20) return "bg-emerald-900/30 border-emerald-600/50 text-emerald-400";
+            return "bg-blue-900/30 border-blue-600/50 text-blue-400";
+        };
+
+        // --- COMPONENTS ---
+
+        const StockLogo = ({ symbol }) => {
+            const [error, setError] = useState(false);
+            const logoUrl = `https://assets.parqet.com/logos/symbol/${symbol}?format=svg`;
+            if (error) return <div className="w-8 h-8 rounded-full logo-placeholder shadow-lg">{symbol.substring(0, 2)}</div>;
+            return (
+                <div className="w-8 h-8 bg-white rounded-full p-0.5 shadow-lg overflow-hidden flex items-center justify-center">
+                    <img src={logoUrl} alt={symbol} className="w-full h-full object-contain" onError={() => setError(true)} />
+                </div>
+            );
+        };
+
+        const DisclaimerModal = ({ onAgree }) => (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                <div className="glass-panel max-w-md w-full p-8 rounded-2xl border border-yellow-500/30 shadow-[0_0_50px_rgba(234,179,8,0.15)] text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent"></div>
+                    <div className="mb-6">
+                        <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-yellow-500/20 shadow-lg shadow-yellow-500/10">
+                            <i className="fa-solid fa-triangle-exclamation text-4xl text-yellow-500"></i>
+                        </div>
+                        <h2 className="text-2xl font-bold text-white mb-2 tracking-wide">Legal Disclaimer</h2>
+                        <p className="text-slate-400 text-sm">Please accept terms to proceed.</p>
+                    </div>
+                    <div className="text-left bg-slate-950/50 p-5 rounded-xl border border-slate-800 mb-8 space-y-3 text-sm text-slate-300 shadow-inner">
+                        <p className="flex gap-2"><i className="fa-solid fa-circle-info text-yellow-500 mt-1 text-xs"></i> <span><strong>No Financial Advice:</strong> This tool is for <strong>educational purposes only</strong>.</span></p>
+                        <p className="flex gap-2"><i className="fa-solid fa-circle-info text-yellow-500 mt-1 text-xs"></i> <span><strong>DYOR:</strong> Always Do Your Own Research.</span></p>
+                        <p className="flex gap-2"><i className="fa-solid fa-circle-info text-yellow-500 mt-1 text-xs"></i> <span><strong>Liability:</strong> The creators are <strong>not liable</strong> for any losses.</span></p>
+                    </div>
+                    <button onClick={onAgree} className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-black font-extrabold text-sm tracking-wider py-4 rounded-xl transition-all shadow-lg hover:shadow-yellow-500/20 transform hover:-translate-y-0.5 active:scale-95">
+                        I AGREE & ENTER TERMINAL
+                    </button>
+                </div>
+            </div>
+        );
+
+        // R2 CONFIG MODAL
+        const ConfigModal = ({ onClose, onSave }) => {
+            const [endpoint, setEndpoint] = useState("");
+            const [accessKeyId, setAccessKeyId] = useState("");
+            const [secretAccessKey, setSecretAccessKey] = useState("");
+            const [bucket, setBucket] = useState("");
+
+            useEffect(() => {
+                const stored = JSON.parse(localStorage.getItem('proTraderR2Config') || '{}');
+                if (stored.endpoint) setEndpoint(stored.endpoint);
+                if (stored.accessKeyId) setAccessKeyId(stored.accessKeyId);
+                if (stored.secretAccessKey) setSecretAccessKey(stored.secretAccessKey);
+                if (stored.bucket) setBucket(stored.bucket);
+            }, []);
+
+            const handleSave = (e) => {
+                e.preventDefault();
+                const config = { endpoint, accessKeyId, secretAccessKey, bucket };
+                localStorage.setItem('proTraderR2Config', JSON.stringify(config));
+                onSave();
+            };
+
+            return (
+                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+                    <div className="glass-panel max-w-md w-full p-6 rounded-2xl border border-slate-700">
+                        <h2 className="text-xl font-bold text-white mb-4">Cloudflare R2 Setup</h2>
+                        <form onSubmit={handleSave} className="space-y-3">
+                            <input type="text" placeholder="R2 Endpoint URL" value={endpoint} onChange={e => setEndpoint(e.target.value)} className="w-full bg-slate-950 p-2 rounded border border-slate-700 text-xs text-white" required />
+                            <input type="text" placeholder="Access Key ID" value={accessKeyId} onChange={e => setAccessKeyId(e.target.value)} className="w-full bg-slate-950 p-2 rounded border border-slate-700 text-xs text-white" required />
+                            <input type="password" placeholder="Secret Access Key" value={secretAccessKey} onChange={e => setSecretAccessKey(e.target.value)} className="w-full bg-slate-950 p-2 rounded border border-slate-700 text-xs text-white" required />
+                            <input type="text" placeholder="Bucket Name" value={bucket} onChange={e => setBucket(e.target.value)} className="w-full bg-slate-950 p-2 rounded border border-slate-700 text-xs text-white" required />
+                            <div className="flex gap-2 pt-2">
+                                <button type="button" onClick={onClose} className="flex-1 bg-slate-800 text-white py-2 rounded text-xs">Cancel</button>
+                                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded text-xs font-bold">Save & Connect</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        const LoginModal = ({ onLogin, onShowConfig }) => {
+            const [email, setEmail] = useState("");
+            const [password, setPassword] = useState("");
+            const [error, setError] = useState("");
+            const [isSignUp, setIsSignUp] = useState(false);
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError("");
+
+                // R2 AUTH LOGIC
+                if (!s3Client) {
+                    setError("Please configure R2 API first (Click Gear Icon)");
+                    setLoading(false);
+                    return;
+                }
+
+                const { PutObjectCommand, GetObjectCommand } = window.window; // Access commands from global SDK
+
+                const userKey = `users/${email.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
+
+                try {
+                    if (isSignUp) {
+                        // Check if exists (by trying to get it)
+                        try {
+                            const check = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: userKey });
+                            await s3Client.send(check);
+                            throw new Error("User already exists. Please login.");
+                        } catch (err) {
+                            if (err.name !== 'NoSuchKey' && err.message !== "User already exists. Please login.") throw err;
+                            
+                            // Create User File
+                            const userData = { email, password, portfolio: [] }; // In real app, hash password!
+                            const putCmd = new PutObjectCommand({
+                                Bucket: BUCKET_NAME,
+                                Key: userKey,
+                                Body: JSON.stringify(userData),
+                                ContentType: "application/json"
+                            });
+                            await s3Client.send(putCmd);
+                            onLogin(userData);
+                        }
+                    } else {
+                        // Login
+                        try {
+                            const getCmd = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: userKey });
+                            const response = await s3Client.send(getCmd);
+                            const str = await response.Body.transformToString();
+                            const userData = JSON.parse(str);
+                            
+                            if (userData.password === password) {
+                                onLogin(userData);
+                            } else {
+                                throw new Error("Incorrect password.");
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+                                throw new Error("User not found.");
+                            }
+                            throw new Error("Login failed: " + err.message);
+                        }
+                    }
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4">
+                    <div className="glass-panel max-w-md w-full p-8 rounded-2xl border border-neon-blue/30 shadow-[0_0_50px_rgba(0,243,255,0.15)] text-center relative overflow-hidden">
+                        <button onClick={onShowConfig} className="absolute top-4 right-4 text-slate-500 hover:text-white"><i className="fa-solid fa-gear"></i></button>
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-neon-blue to-transparent"></div>
+                        <div className="mb-6">
+                            <div className="w-20 h-20 bg-neon-blue/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-neon-blue/20 shadow-lg shadow-neon-blue/10">
+                                <i className="fa-solid fa-user-astronaut text-4xl text-neon-blue"></i>
+                            </div>
+                            <h2 className="text-2xl font-bold text-white mb-2 tracking-wide">Pro Trader Alpha</h2>
+                            <p className="text-slate-400 text-xs uppercase tracking-widest">Cloud Access (R2)</p>
+                        </div>
+                        
+                        <form onSubmit={handleSubmit} className="space-y-4 text-left">
+                            <div>
+                                <label className="text-xs text-slate-400 uppercase font-bold">Email</label>
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-neon-blue outline-none" required />
+                            </div>
+                            <div>
+                                <label className="text-xs text-slate-400 uppercase font-bold">Password</label>
+                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-neon-blue outline-none" required />
+                            </div>
+                            {error && <div className="text-red-400 text-xs">{error}</div>}
+                            <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-neon-blue hover:from-blue-500 hover:to-cyan-400 text-black font-extrabold text-sm tracking-wider py-4 rounded-xl transition-all shadow-lg hover:shadow-neon-blue/20 transform hover:-translate-y-0.5 active:scale-95 disabled:opacity-50">
+                                {loading ? "CONNECTING..." : (isSignUp ? "CREATE ACCOUNT" : "LOGIN")}
+                            </button>
+                        </form>
+                        
+                        <div className="mt-4 text-xs text-slate-500">
+                            <span className="cursor-pointer hover:text-white" onClick={() => setIsSignUp(!isSignUp)}>
+                                {isSignUp ? "Already have an account? Login" : "New here? Create an Account"}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ChartView = ({ stock, onClose }) => {
+            const canvasRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current || !stock) return;
+                if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; }
+
+                const today = new Date();
+                let labels = [], dataPoints = [];
+                
+                for (let i = 30; i >= 0; i--) {
+                    const d = new Date(today);
+                    d.setDate(d.getDate() - i);
+                    labels.push(d.toISOString().split('T')[0]);
+                    dataPoints.push(stock.price * (1 + (Math.random() * 0.1 - 0.05))); 
+                }
+
+                const ctx = canvasRef.current.getContext('2d');
+                chartInstance.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `${stock.symbol} Price`,
+                            data: dataPoints,
+                            borderColor: '#00f3ff',
+                            backgroundColor: 'rgba(0, 243, 255, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
+                            x: { display: false }
+                        }
+                    }
+                });
+                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+            }, [stock]);
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="glass-panel w-full max-w-5xl rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[85vh]">
+                        <div className="p-6 border-b border-slate-700/50 flex justify-between items-center glass-header">
+                            <div className="flex items-center gap-4">
+                                <StockLogo symbol={stock.symbol} />
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                                        {stock.symbol}
+                                        <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">US MARKET</span>
+                                    </h2>
+                                    <div className="flex gap-4 text-sm mt-1">
+                                        <span className="text-slate-400">Price: <strong className="text-white">{formatCurrency(stock.price)}</strong></span>
+                                        <span className="text-slate-400">ATH: <strong className="text-yellow-400">{formatCurrency(stock.ath)}</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white transition flex items-center justify-center">
+                                <i className="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <div className="flex-1 p-4 relative min-h-0 bg-[#0b1120]">
+                            <canvas ref={canvasRef}></canvas>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [stocks, setStocks] = useState([]);
+            const [athMap, setAthMap] = useState({}); 
+            const [portfolio, setPortfolio] = useState([]);
+            const [indicators, setIndicators] = useState({}); 
+            const [activeStrategy, setActiveStrategy] = useState('hybrid'); 
+            const [sortConfig, setSortConfig] = useState({ key: 'default', direction: 'desc' });
+            const [selectedStock, setSelectedStock] = useState(null);
+            const [vix, setVix] = useState(21.5); 
+            const [fearGreed, setFearGreed] = useState(35); 
+            const [pfTicker, setPfTicker] = useState("");
+            const [pfShares, setPfShares] = useState("");
+            const [pfAvgCost, setPfAvgCost] = useState("");
+            const [disclaimerAgreed, setDisclaimerAgreed] = useState(false);
+            const [showLogin, setShowLogin] = useState(true);
+            const [showConfig, setShowConfig] = useState(false);
+
+            useEffect(() => {
+                // Initialize S3 client from window.AWS_SDK_S3 (CDN loads it as window.S3 usually, or we find it)
+                // The script tag provided imports specific modular clients. We need to check global scope.
+                const checkS3 = () => {
+                    if (window.window && window.window.S3Client) {
+                         initR2();
+                    } else {
+                         // If SDK not ready, retry shorty
+                         setTimeout(checkS3, 500);
+                    }
+                }
+                checkS3();
+
+                const agreed = localStorage.getItem('proTraderDisclaimerAgreed');
+                if (agreed) setDisclaimerAgreed(true);
+                
+                // Load static market data (Admin would update this file to R2 in real world scenario)
+                const initStocks = INITIAL_TICKERS.map(sym => {
+                    const ath = SEED_ATH[sym] || 100;
+                    const price = ath * (0.85 + Math.random() * 0.1); 
+                    return processStockData(sym, price, ath); 
+                });
+                setStocks(initStocks);
+                calculateMarketMetrics(initStocks);
+            }, []);
+
+            useEffect(() => {
+                setStocks(prev => prev.map(s => processStockData(s.symbol, s.price, s.ath)));
+            }, [activeStrategy, indicators, athMap]);
+
+            const handleUserLogin = (userData) => {
+                setUser(userData);
+                if (userData.portfolio) setPortfolio(userData.portfolio);
+                setShowLogin(false);
+            };
+            
+            const handleLogout = () => {
+                setUser(null);
+                setPortfolio([]);
+                setShowLogin(true);
+            };
+
+            const handleAgree = () => {
+                localStorage.setItem('proTraderDisclaimerAgreed', 'true');
+                setDisclaimerAgreed(true);
+            };
+
+            const handleConfigSave = () => {
+                if (initR2()) {
+                    setShowConfig(false);
+                    alert("R2 Connected Successfully.");
+                } else {
+                    alert("Config invalid.");
+                }
+            };
+
+            const processStockData = (symbol, price, ath) => {
+                const stockInd = indicators[symbol] || {};
+                const sma200 = stockInd.sma200 || 0;
+                const rsi = stockInd.rsi || 50;
+                const stats = calculateStatus(price, ath, vix, rsi, sma200, activeStrategy, symbol);
+                const marketCap = REFERENCE_CAPS[symbol] ? REFERENCE_CAPS[symbol] * 1000000000000 : 50000000000; 
+                return { symbol, price, ath, marketCap, discount: ath - price, prevClose: price * 0.99, indicators: stockInd, stats };
+            };
+
+            const calculateMarketMetrics = (stocks) => {
+                if (!stocks || stocks.length === 0) return;
+                const topStocks = stocks.slice(0, 10);
+                const avgDrop = topStocks.reduce((acc, s) => acc + s.stats.dropPct, 0) / topStocks.length;
+                const newVix = 14 + (avgDrop * 1.2);
+                const newFearGreed = Math.max(5, Math.min(95, 85 - (avgDrop * 2.5)));
+                setVix(parseFloat(newVix.toFixed(2)));
+                setFearGreed(Math.round(newFearGreed));
+            };
+
+            const handleSortChange = (key) => {
+                let direction = 'desc';
+                if (sortConfig.key === key) direction = sortConfig.direction === 'desc' ? 'asc' : 'desc';
+                setSortConfig({ key, direction });
+            };
+
+            const strategyConstituents = useMemo(() => {
+                let pool = [];
+                if (activeStrategy === 'cap') pool = stocks.filter(s => INITIAL_TICKERS.indexOf(s.symbol) < 20);
+                else if (activeStrategy === 'pro_logic') pool = stocks.filter(s => INITIAL_TICKERS.indexOf(s.symbol) < 20);
+                else pool = [...stocks];
+
+                pool.sort((a, b) => {
+                    if (activeStrategy === 'hybrid') {
+                        const capA = (REFERENCE_CAPS[a.symbol] || 0.1);
+                        const capB = (REFERENCE_CAPS[b.symbol] || 0.1);
+                        return (capB * b.stats.dropPct) - (capA * a.stats.dropPct);
+                    }
+                    if (activeStrategy === 'deep_value') return b.stats.dropPct - a.stats.dropPct;
+                    if (activeStrategy === 'trend_pullback') return b.stats.zoneScore - a.stats.zoneScore;
+                    return b.stats.zoneScore - a.stats.zoneScore;
+                });
+
+                const limit = activeStrategy === 'ultimate_alpha' ? 5 : 10;
+                return pool.slice(0, limit);
+            }, [stocks, activeStrategy]);
+
+            const sortedTableStocks = useMemo(() => {
+                let list = [...strategyConstituents];
+                const { key, direction } = sortConfig;
+
+                if (key === 'default') return list;
+
+                list.sort((a, b) => {
+                    let valA, valB;
+                    if (key === 'symbol') { valA = a.symbol; valB = b.symbol; return direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA); } 
+                    else if (key === 'price') { valA = a.price; valB = b.price; }
+                    else if (key === 'ath') { valA = a.ath; valB = b.ath; }
+                    else if (key === 'cap') { valA = a.marketCap; valB = b.marketCap; }
+                    else if (key === 'drop') { valA = a.stats.dropPct; valB = b.stats.dropPct; }
+                    else if (key === 'discount') { valA = a.discount; valB = b.discount; }
+                    else if (key === 'zone' || key === 'rating') { valA = a.stats.zoneScore; valB = b.stats.zoneScore; }
+                    else { valA = a.stats.dropPct; valB = b.stats.dropPct; }
+                    
+                    if (direction === 'asc') return valA - valB;
+                    return valB - valA;
+                });
+                return list;
+            }, [strategyConstituents, sortConfig]);
+
+            const saveUserPortfolio = async (newPortfolio) => {
+                 if (!user || !s3Client) return;
+                 const { PutObjectCommand } = window.window;
+                 const userKey = `users/${user.email.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
+                 try {
+                     const userData = { ...user, portfolio: newPortfolio };
+                     const putCmd = new PutObjectCommand({
+                        Bucket: BUCKET_NAME,
+                        Key: userKey,
+                        Body: JSON.stringify(userData),
+                        ContentType: "application/json"
+                     });
+                     await s3Client.send(putCmd);
+                 } catch (e) { console.error("Save failed", e); }
+            }
+
+            const handlePortfolioAdd = async (e) => {
+                e.preventDefault();
+                if (!pfTicker || !pfShares || !pfAvgCost) return;
+                const tickerUpper = pfTicker.toUpperCase();
+                const sharesFloat = parseFloat(pfShares);
+                const costFloat = parseFloat(pfAvgCost);
+                
+                let newPortfolio = [...portfolio];
+                const existingIndex = newPortfolio.findIndex(p => p.symbol === tickerUpper);
+
+                if (existingIndex >= 0) {
+                    const existingItem = newPortfolio[existingIndex];
+                    const totalShares = existingItem.shares + sharesFloat;
+                    const totalCost = (existingItem.shares * existingItem.avgCost) + (sharesFloat * costFloat);
+                    const newAvg = totalCost / totalShares;
+                    newPortfolio[existingIndex] = { ...existingItem, shares: totalShares, avgCost: newAvg };
+                } else {
+                    newPortfolio.push({ id: Date.now(), symbol: tickerUpper, shares: sharesFloat, avgCost: costFloat });
+                }
+                setPortfolio(newPortfolio);
+                saveUserPortfolio(newPortfolio);
+                setPfTicker(""); setPfShares(""); setPfAvgCost("");
+            };
+
+            const removePortfolioItem = async (id) => {
+                const newPortfolio = portfolio.filter(p => p.id !== id);
+                setPortfolio(newPortfolio);
+                saveUserPortfolio(newPortfolio);
+            };
+
+            const getPortfolioSummary = () => {
+                let totalInvested = 0; let currentValue = 0;
+                portfolio.forEach(item => {
+                    totalInvested += item.shares * item.avgCost;
+                    const stock = stocks.find(s => s.symbol === item.symbol);
+                    const currentPrice = stock ? stock.price : item.avgCost; 
+                    currentValue += item.shares * currentPrice;
+                });
+                return { totalInvested, currentValue, pl: currentValue - totalInvested };
+            };
+            const pfSummary = getPortfolioSummary();
+
+            const SortHeader = ({ label, sortKey, currentConfig, onSort }) => (
+                <th className={`px-6 py-4 sortable ${currentConfig.key === sortKey ? 'text-neon-blue' : 'text-slate-400'}`} onClick={() => onSort(sortKey)}>
+                    <div className="flex items-center gap-2 text-xs uppercase tracking-wider font-bold">
+                        {label}<i className={`fa-solid ${currentConfig.key === sortKey ? (currentConfig.direction === 'asc' ? 'fa-arrow-up' : 'fa-arrow-down') : 'fa-sort text-slate-500'}`}></i>
+                    </div>
+                </th>
+            );
+
+            const StrategyButton = ({ id, label, icon, isGold }) => (
+                <button 
+                    onClick={() => { setActiveStrategy(id); setSortConfig({key:'default', direction:'desc'}); }}
+                    className={`btn-strategy px-4 py-2.5 rounded-lg flex items-center gap-2 font-bold text-sm border 
+                        ${activeStrategy === id 
+                            ? (isGold ? 'bg-yellow-500/20 border-yellow-500 text-yellow-400 shadow-glow-gold' : 'bg-neon-blue/20 border-neon-blue text-neon-blue shadow-glow')
+                            : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:bg-slate-800 hover:border-slate-500'}`}
+                >
+                    <i className={`fa-solid ${icon}`}></i> {label}
+                </button>
+            );
+
+            return (
+                <div className="pb-20">
+                    {!disclaimerAgreed && <DisclaimerModal onAgree={handleAgree} />}
+                    {showLogin && <LoginModal onLogin={handleUserLogin} onShowConfig={() => setShowConfig(true)} />}
+                    {showConfig && <ConfigModal onClose={() => setShowConfig(false)} onSave={handleConfigSave} />}
+                    
+                    <nav className="glass-header sticky top-0 z-40">
+                        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-gradient-to-br from-neon-blue to-blue-600 w-10 h-10 rounded-xl flex items-center justify-center text-black font-bold text-xl shadow-glow"><i className="fa-solid fa-chart-line"></i></div>
+                                <div><h1 className="text-xl font-bold text-white tracking-wide">PRO TRADER <span className="text-neon-blue">ALPHA</span></h1><p className="text-[10px] text-slate-400 uppercase tracking-widest">Client Terminal</p></div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="hidden md:flex items-center gap-4 glass-panel px-4 py-2 rounded-xl">
+                                    <div className="flex flex-col items-center px-2"><div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">VIX Index</div><div className={`font-mono font-bold text-lg ${vix > 20 ? 'text-red-400 animate-pulse' : 'text-neon-green'}`}>{vix}</div></div>
+                                    <div className="w-px h-8 bg-slate-700"></div>
+                                    <div className="flex flex-col items-center px-2"><div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Sentiment</div><div className={`font-bold text-sm ${fearGreed < 40 ? 'text-red-400' : 'text-neon-green'}`}>{fearGreed} <span className="opacity-50 text-[10px]">{fearGreed < 40 ? "FEAR" : "GREED"}</span></div></div>
+                                </div>
+                                {!showLogin && <button onClick={handleLogout} className="text-slate-400 hover:text-white text-xs uppercase font-bold px-3">Logout</button>}
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-7xl mx-auto px-4 mt-8 space-y-8">
+                        <div className="flex flex-col gap-6">
+                            <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+                                <div><h2 className="text-2xl font-bold text-white flex items-center gap-2"><i className="fa-solid fa-layer-group text-slate-500"></i> Market Scanner</h2><p className="text-sm text-slate-400 mt-1">Viewing Top {activeStrategy === 'ultimate_alpha' ? '5' : '10'} • {activeStrategy.replace('_', ' ').toUpperCase()} Strategy</p></div>
+                            </div>
+                            <div className="flex flex-wrap gap-2 p-1 bg-slate-900/50 rounded-xl border border-slate-800 w-fit">
+                                <StrategyButton id="ultimate_alpha" label="Ultimate Alpha" icon="fa-trophy" isGold={true} />
+                                <StrategyButton id="pro_logic" label="Pro Logic" icon="fa-crown" />
+                                <StrategyButton id="trend_pullback" label="Trend Pullback" icon="fa-arrow-trend-up" />
+                                <StrategyButton id="hybrid" label="Hybrid" icon="fa-balance-scale" />
+                                <StrategyButton id="cap" label="Market Cap" icon="fa-building" />
+                                <StrategyButton id="deep_value" label="Deep Value" icon="fa-tags" />
+                            </div>
+                        </div>
+
+                        <div className="glass-panel rounded-2xl overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm text-slate-300">
+                                    <thead className="glass-table-header border-b border-slate-700/50">
+                                        <tr>
+                                            <SortHeader label="Symbol" sortKey="symbol" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="Price" sortKey="price" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="ATH" sortKey="ath" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="M. Cap" sortKey="cap" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="Drawdown" sortKey="drop" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="Discount" sortKey="discount" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label="Zone" sortKey="zone" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <SortHeader label={activeStrategy === 'ultimate_alpha' ? 'Conviction & Why' : 'Rating'} sortKey="rating" currentConfig={sortConfig} onSort={handleSortChange} />
+                                            <th className="px-6 py-4 text-right text-slate-400 font-bold uppercase text-xs">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/50">
+                                        {sortedTableStocks.map((stock, index) => {
+                                            const diff = stock.price - stock.ath;
+                                            const diffColor = diff >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                            const diffText = diff >= 0 ? `+${formatCurrency(diff)}` : formatCurrency(diff);
+                                            
+                                            return (
+                                                <tr key={stock.symbol} onClick={() => setSelectedStock(stock)} className="stock-row group cursor-pointer">
+                                                    <td className="px-6 py-4"><div className="flex items-center gap-3"><span className="text-slate-600 font-mono w-4">{(index + 1).toString().padStart(2, '0')}</span><StockLogo symbol={stock.symbol} /><div><div className="font-bold text-white text-base">{stock.symbol}</div></div></div></td>
+                                                    <td className="px-6 py-4 font-mono text-white">{formatCurrency(stock.price)}</td>
+                                                    <td className="px-6 py-4 font-mono text-slate-500">{formatCurrency(stock.ath)}</td>
+                                                    <td className="px-6 py-4 font-mono text-indigo-300">{formatMarketCap(stock.marketCap)}</td>
+                                                    <td className="px-6 py-4"><span className={`font-bold ${stock.stats.dropPct > 15 ? 'text-red-400' : stock.stats.dropPct > 5 ? 'text-yellow-400' : 'text-slate-400'}`}>-{stock.stats.dropPct.toFixed(2)}%</span></td>
+                                                    <td className={`px-6 py-4 font-bold font-mono ${diffColor}`}>{diffText}</td>
+                                                    <td className="px-6 py-4"><span className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${getZoneColorClass(stock.stats.dropPct)}`}>{getDropZoneLabel(stock.stats.dropPct)}</span></td>
+                                                    <td className="px-6 py-4"><div className="flex flex-col"><span className={`text-xs font-bold ${stock.stats.color}`}>{stock.stats.rating}</span>{activeStrategy === 'ultimate_alpha' && stock.stats.reason && (<span className="text-[9px] text-slate-400 mt-1 opacity-75">{stock.stats.reason}</span>)}</div></td>
+                                                    <td className="px-6 py-4 text-right"><button className="text-slate-600 group-hover:text-neon-blue transition-colors bg-slate-800 p-2 rounded-lg group-hover:bg-slate-700"><i className="fa-solid fa-chart-simple"></i></button></td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="glass-panel rounded-2xl p-6 border-t-2 border-t-blue-500">
+                            <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><i className="fa-solid fa-wallet text-blue-500"></i> Portfolio Tracker</h3>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <form onSubmit={handlePortfolioAdd} className="space-y-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+                                    <div>
+                                        <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Ticker</label>
+                                        <input list="ticker-list" type="text" required value={pfTicker} onChange={e => setPfTicker(e.target.value)} 
+                                            className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white focus:border-neon-blue focus:outline-none transition-colors mt-1" placeholder="e.g. AAPL" />
+                                        <datalist id="ticker-list">
+                                            {INITIAL_TICKERS.map(t => <option key={t} value={t} />)}
+                                        </datalist>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Shares</label><input type="number" step="any" required value={pfShares} onChange={e => setPfShares(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white focus:border-neon-blue focus:outline-none mt-1" placeholder="0.00" /></div>
+                                        <div><label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Avg Cost</label><input type="number" step="any" required value={pfAvgCost} onChange={e => setPfAvgCost(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white focus:border-neon-blue focus:outline-none mt-1" placeholder="$0.00" /></div>
+                                    </div>
+                                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition-colors shadow-lg mt-2">ADD POSITION</button>
+                                </form>
+                                <div className="lg:col-span-2">
+                                    <div className="overflow-x-auto rounded-xl border border-slate-700/50">
+                                        <table className="w-full text-left text-sm text-slate-400">
+                                            <thead className="bg-slate-800 text-[10px] uppercase font-bold text-slate-500">
+                                                <tr><th className="px-4 py-3">Asset</th><th className="px-4 py-3">Shares</th><th className="px-4 py-3">Cost Basis</th><th className="px-4 py-3">Current</th><th className="px-4 py-3">P&L</th><th className="px-4 py-3 text-right">Action</th></tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-800/50 bg-slate-900/30">
+                                                {portfolio.map(item => {
+                                                    const stock = stocks.find(s => s.symbol === item.symbol);
+                                                    const currentPrice = stock ? stock.price : item.avgCost; 
+                                                    const pl = (currentPrice - item.avgCost) * item.shares;
+                                                    const plPct = item.avgCost > 0 ? (pl / (item.shares * item.avgCost)) * 100 : 0;
+                                                    
+                                                    return (
+                                                        <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
+                                                            <td className="px-4 py-3 font-bold text-white flex items-center gap-2"><StockLogo symbol={item.symbol} /> {item.symbol}</td>
+                                                            <td className="px-4 py-3">{item.shares}</td>
+                                                            <td className="px-4 py-3">{formatCurrency(item.avgCost)}</td>
+                                                            <td className="px-4 py-3 text-white">{formatCurrency(currentPrice)}</td>
+                                                            <td className={`px-4 py-3 font-bold ${pl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pl >= 0 ? '+' : ''}{formatCurrency(pl)} <span className="text-[10px] opacity-70 ml-1">({plPct.toFixed(2)}%)</span></td>
+                                                            <td className="px-4 py-3 text-right"><button onClick={() => removePortfolioItem(item.id)} className="text-slate-600 hover:text-red-400 transition-colors"><i className="fa-solid fa-trash-can"></i></button></td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                {portfolio.length === 0 && <tr><td colSpan="6" className="px-4 py-8 text-center text-slate-600 italic">No open positions. Add one to start tracking.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div className="mt-6 flex flex-wrap justify-end gap-6 pt-4 border-t border-slate-700/50">
+                                        <div className="text-right"><div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Total Invested</div><div className="text-xl font-bold text-white">{formatCurrency(pfSummary.totalInvested)}</div></div>
+                                        <div className="text-right"><div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Current Value</div><div className="text-xl font-bold text-blue-400">{formatCurrency(pfSummary.currentValue)}</div></div>
+                                        <div className="text-right bg-slate-800 px-4 py-1 rounded-lg border border-slate-700"><div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Total P&L</div><div className={`text-2xl font-bold ${pfSummary.pl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pfSummary.pl >= 0 ? '+' : ''}{formatCurrency(pfSummary.pl)}</div></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+
+                    {selectedStock && <ChartView stock={selectedStock} onClose={() => setSelectedStock(null)} />}
+                    
+                    <footer className="fixed bottom-0 w-full bg-[#020617] border-t border-slate-800 p-2 text-center text-[10px] text-slate-600 z-50">
+                        Pro Trader Alpha v2.0 • View Only Mode • Not Financial Advice
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
