@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Trader Alpha - Subscriber Terminal</title>
+    <title>Pro Trader Alpha - Terminal</title>
     
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -41,8 +41,14 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
-    <!-- AWS SDK for JavaScript (v3) for R2 Connection -->
-    <script src="https://unpkg.com/@aws-sdk/client-s3@3.363.0/dist-browser/client-s3.js"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, getDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.firebaseApp = { initializeApp, getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, signInWithCustomToken, getFirestore, doc, setDoc, onSnapshot, getDoc, collection };
+    </script>
 
     <style>
         body { 
@@ -86,8 +92,24 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
+        // --- FIREBASE INIT ---
+        let auth, db, appId;
+        
+        const initFirebase = () => {
+            if (window.firebaseApp && typeof __firebase_config !== 'undefined') {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = window.firebaseApp.initializeApp(firebaseConfig);
+                auth = window.firebaseApp.getAuth(app);
+                db = window.firebaseApp.getFirestore(app);
+                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                return true;
+            }
+            return false;
+        };
+
         // --- CONFIGURATION ---
-        const API_KEY = '29f6e55e359cea3c32dfb279a4901516'; 
+        const API_KEY = '29f6e55e359cea3c32dfb279a4901516'; // User's Key
+        const ADMIN_EMAIL = "admin@protrader.com"; // THE ONLY ACCOUNT WITH SCANNER BUTTONS
         
         const INITIAL_TICKERS = [
             "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "BRK.B", 
@@ -115,48 +137,8 @@
 
         // --- HELPER FUNCTIONS ---
         const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+        const formatPercent = (val) => `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
         const formatMarketCap = (val) => val >= 1000000000000 ? `$${(val / 1000000000000).toFixed(1)}T` : `$${(val / 1000000000).toFixed(1)}B`;
-        const simpleHash = (str) => {
-            let hash = 0;
-            for (let i = 0; i < str.length; i++) {
-                const char = str.charCodeAt(i);
-                hash = (hash << 5) - hash + char;
-                hash = hash & hash;
-            }
-            return Math.abs(hash).toString(16);
-        };
-
-        // --- R2 CLIENT SETUP ---
-        let s3Client = null;
-        let BUCKET_NAME = "";
-
-        const initR2 = () => {
-            const config = JSON.parse(localStorage.getItem('proTraderR2Config') || '{}');
-            if (config.endpoint && config.accessKeyId && config.secretAccessKey && config.bucket) {
-                const { S3 } = window.AWS; // Access via global AWS object from script
-                // Note: Using browser fetch, we rely on the generic structure. 
-                // The imported SDK places 'S3' in the global scope or module scope depending on build.
-                // We will construct the client manually using the imported module if available
-                try {
-                    const { S3Client } = window.AWS_SDK_S3 || window; // Fallback lookup
-                    // Actually using the UMD build exposes `window.AWS.S3` usually or similar.
-                    // Let's assume standard fetch for simplicity if SDK fails or use the global S3Client from the script tag.
-                } catch(e) {}
-                
-                // Initialize client from the module import
-                s3Client = new window.window.S3Client({
-                    region: "auto",
-                    endpoint: config.endpoint,
-                    credentials: {
-                        accessKeyId: config.accessKeyId,
-                        secretAccessKey: config.secretAccessKey,
-                    },
-                });
-                BUCKET_NAME = config.bucket;
-                return true;
-            }
-            return false;
-        };
 
         // --- STRATEGY LOGIC ---
         const calculateStatus = (current, ath, vix, rsi = 50, sma200 = 0, strategy = 'hybrid', symbol = '') => {
@@ -275,149 +257,68 @@
             </div>
         );
 
-        // R2 CONFIG MODAL
-        const ConfigModal = ({ onClose, onSave }) => {
-            const [endpoint, setEndpoint] = useState("");
-            const [accessKeyId, setAccessKeyId] = useState("");
-            const [secretAccessKey, setSecretAccessKey] = useState("");
-            const [bucket, setBucket] = useState("");
-
-            useEffect(() => {
-                const stored = JSON.parse(localStorage.getItem('proTraderR2Config') || '{}');
-                if (stored.endpoint) setEndpoint(stored.endpoint);
-                if (stored.accessKeyId) setAccessKeyId(stored.accessKeyId);
-                if (stored.secretAccessKey) setSecretAccessKey(stored.secretAccessKey);
-                if (stored.bucket) setBucket(stored.bucket);
-            }, []);
-
-            const handleSave = (e) => {
-                e.preventDefault();
-                const config = { endpoint, accessKeyId, secretAccessKey, bucket };
-                localStorage.setItem('proTraderR2Config', JSON.stringify(config));
-                onSave();
-            };
-
-            return (
-                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-                    <div className="glass-panel max-w-md w-full p-6 rounded-2xl border border-slate-700">
-                        <h2 className="text-xl font-bold text-white mb-4">Cloudflare R2 Setup</h2>
-                        <form onSubmit={handleSave} className="space-y-3">
-                            <input type="text" placeholder="R2 Endpoint URL" value={endpoint} onChange={e => setEndpoint(e.target.value)} className="w-full bg-slate-950 p-2 rounded border border-slate-700 text-xs text-white" required />
-                            <input type="text" placeholder="Access Key ID" value={accessKeyId} onChange={e => setAccessKeyId(e.target.value)} className="w-full bg-slate-950 p-2 rounded border border-slate-700 text-xs text-white" required />
-                            <input type="password" placeholder="Secret Access Key" value={secretAccessKey} onChange={e => setSecretAccessKey(e.target.value)} className="w-full bg-slate-950 p-2 rounded border border-slate-700 text-xs text-white" required />
-                            <input type="text" placeholder="Bucket Name" value={bucket} onChange={e => setBucket(e.target.value)} className="w-full bg-slate-950 p-2 rounded border border-slate-700 text-xs text-white" required />
-                            <div className="flex gap-2 pt-2">
-                                <button type="button" onClick={onClose} className="flex-1 bg-slate-800 text-white py-2 rounded text-xs">Cancel</button>
-                                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded text-xs font-bold">Save & Connect</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            );
-        }
-
-        const LoginModal = ({ onLogin, onShowConfig }) => {
+        const LoginModal = ({ onLogin }) => {
             const [email, setEmail] = useState("");
             const [password, setPassword] = useState("");
             const [error, setError] = useState("");
             const [isSignUp, setIsSignUp] = useState(false);
-            const [loading, setLoading] = useState(false);
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                setLoading(true);
+                if (!email.includes("@")) { setError("Please enter a valid email."); return; }
+                if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+
                 setError("");
-
-                // R2 AUTH LOGIC
-                if (!s3Client) {
-                    setError("Please configure R2 API first (Click Gear Icon)");
-                    setLoading(false);
-                    return;
-                }
-
-                const { PutObjectCommand, GetObjectCommand } = window.window; // Access commands from global SDK
-
-                const userKey = `users/${email.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
-
                 try {
                     if (isSignUp) {
-                        // Check if exists (by trying to get it)
-                        try {
-                            const check = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: userKey });
-                            await s3Client.send(check);
-                            throw new Error("User already exists. Please login.");
-                        } catch (err) {
-                            if (err.name !== 'NoSuchKey' && err.message !== "User already exists. Please login.") throw err;
-                            
-                            // Create User File
-                            const userData = { email, password, portfolio: [] }; // In real app, hash password!
-                            const putCmd = new PutObjectCommand({
-                                Bucket: BUCKET_NAME,
-                                Key: userKey,
-                                Body: JSON.stringify(userData),
-                                ContentType: "application/json"
-                            });
-                            await s3Client.send(putCmd);
-                            onLogin(userData);
-                        }
+                        await window.firebaseApp.createUserWithEmailAndPassword(auth, email, password);
                     } else {
-                        // Login
-                        try {
-                            const getCmd = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: userKey });
-                            const response = await s3Client.send(getCmd);
-                            const str = await response.Body.transformToString();
-                            const userData = JSON.parse(str);
-                            
-                            if (userData.password === password) {
-                                onLogin(userData);
-                            } else {
-                                throw new Error("Incorrect password.");
-                            }
-                        } catch (err) {
-                            console.error(err);
-                            if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
-                                throw new Error("User not found.");
-                            }
-                            throw new Error("Login failed: " + err.message);
-                        }
+                        await window.firebaseApp.signInWithEmailAndPassword(auth, email, password);
                     }
+                    // onLogin triggered via auth listener
                 } catch (err) {
-                    setError(err.message);
-                } finally {
-                    setLoading(false);
+                    // Map Firebase error codes to friendly messages
+                    if (err.code === 'auth/operation-not-allowed') {
+                        setError("Login is currently disabled. Contact Admin.");
+                    } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+                        setError("Invalid email or password.");
+                    } else if (err.code === 'auth/email-already-in-use') {
+                        setError("Email already in use.");
+                    } else {
+                        setError(err.message);
+                    }
                 }
             };
 
             return (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4">
                     <div className="glass-panel max-w-md w-full p-8 rounded-2xl border border-neon-blue/30 shadow-[0_0_50px_rgba(0,243,255,0.15)] text-center relative overflow-hidden">
-                        <button onClick={onShowConfig} className="absolute top-4 right-4 text-slate-500 hover:text-white"><i className="fa-solid fa-gear"></i></button>
                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-neon-blue to-transparent"></div>
                         <div className="mb-6">
                             <div className="w-20 h-20 bg-neon-blue/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-neon-blue/20 shadow-lg shadow-neon-blue/10">
                                 <i className="fa-solid fa-user-astronaut text-4xl text-neon-blue"></i>
                             </div>
                             <h2 className="text-2xl font-bold text-white mb-2 tracking-wide">Pro Trader Alpha</h2>
-                            <p className="text-slate-400 text-xs uppercase tracking-widest">Cloud Access (R2)</p>
+                            <p className="text-slate-400 text-xs uppercase tracking-widest">Secure Access</p>
                         </div>
                         
                         <form onSubmit={handleSubmit} className="space-y-4 text-left">
                             <div>
                                 <label className="text-xs text-slate-400 uppercase font-bold">Email</label>
-                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-neon-blue outline-none" required />
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-neon-blue outline-none" required placeholder="user@protrader.com" />
                             </div>
                             <div>
                                 <label className="text-xs text-slate-400 uppercase font-bold">Password</label>
-                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-neon-blue outline-none" required />
+                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-neon-blue outline-none" required placeholder="••••••••" />
                             </div>
                             {error && <div className="text-red-400 text-xs">{error}</div>}
-                            <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-blue-600 to-neon-blue hover:from-blue-500 hover:to-cyan-400 text-black font-extrabold text-sm tracking-wider py-4 rounded-xl transition-all shadow-lg hover:shadow-neon-blue/20 transform hover:-translate-y-0.5 active:scale-95 disabled:opacity-50">
-                                {loading ? "CONNECTING..." : (isSignUp ? "CREATE ACCOUNT" : "LOGIN")}
+                            <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-neon-blue hover:from-blue-500 hover:to-cyan-400 text-black font-extrabold text-sm tracking-wider py-4 rounded-xl transition-all shadow-lg hover:shadow-neon-blue/20 transform hover:-translate-y-0.5 active:scale-95">
+                                {isSignUp ? "CREATE ACCOUNT" : "LOGIN"}
                             </button>
                         </form>
                         
                         <div className="mt-4 text-xs text-slate-500">
-                            <span className="cursor-pointer hover:text-white" onClick={() => setIsSignUp(!isSignUp)}>
+                            <span className="cursor-pointer hover:text-white" onClick={() => { setIsSignUp(!isSignUp); setError(""); }}>
                                 {isSignUp ? "Already have an account? Login" : "New here? Create an Account"}
                             </span>
                         </div>
@@ -426,7 +327,7 @@
             );
         };
 
-        const ChartView = ({ stock, onClose }) => {
+        const ChartView = ({ stock, onClose, historyData }) => {
             const canvasRef = useRef(null);
             const chartInstance = useRef(null);
 
@@ -434,14 +335,26 @@
                 if (!canvasRef.current || !stock) return;
                 if (chartInstance.current) { chartInstance.current.destroy(); chartInstance.current = null; }
 
-                const today = new Date();
-                let labels = [], dataPoints = [];
-                
-                for (let i = 30; i >= 0; i--) {
-                    const d = new Date(today);
-                    d.setDate(d.getDate() - i);
-                    labels.push(d.toISOString().split('T')[0]);
-                    dataPoints.push(stock.price * (1 + (Math.random() * 0.1 - 0.05))); 
+                const labels = [];
+                const dataPoints = [];
+
+                // Use Real Data if available (passed from parent), otherwise empty or placeholder
+                // NOTE: Viewer-only mode relies on data stored in DB. If data is not there, we show placeholder.
+                if (historyData && historyData.length > 0) {
+                    const sorted = [...historyData].filter(d => d.close !== null && d.date).reverse();
+                    sorted.forEach(d => {
+                        labels.push(d.date.split('T')[0]);
+                        dataPoints.push(d.close);
+                    });
+                } else {
+                    // Placeholder logic for visual consistency when offline/empty
+                     const today = new Date();
+                     for (let i = 30; i >= 0; i--) {
+                        const d = new Date(today);
+                        d.setDate(d.getDate() - i);
+                        labels.push(d.toISOString().split('T')[0]);
+                        dataPoints.push(stock.price * (1 + (Math.random() * 0.1 - 0.05))); 
+                    }
                 }
 
                 const ctx = canvasRef.current.getContext('2d');
@@ -471,7 +384,7 @@
                     }
                 });
                 return () => { if (chartInstance.current) chartInstance.current.destroy(); };
-            }, [stock]);
+            }, [stock, historyData]);
 
             return (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -504,9 +417,14 @@
 
         const App = () => {
             const [user, setUser] = useState(null);
+            const [isAdmin, setIsAdmin] = useState(false);
             const [stocks, setStocks] = useState([]);
             const [athMap, setAthMap] = useState({}); 
             const [portfolio, setPortfolio] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [scanProgress, setScanProgress] = useState(0); 
+            const [isScanning, setIsScanning] = useState(false);
+            const [lastUpdated, setLastUpdated] = useState(null);
             const [indicators, setIndicators] = useState({}); 
             const [activeStrategy, setActiveStrategy] = useState('hybrid'); 
             const [sortConfig, setSortConfig] = useState({ key: 'default', direction: 'desc' });
@@ -518,48 +436,95 @@
             const [pfAvgCost, setPfAvgCost] = useState("");
             const [disclaimerAgreed, setDisclaimerAgreed] = useState(false);
             const [showLogin, setShowLogin] = useState(true);
-            const [showConfig, setShowConfig] = useState(false);
 
             useEffect(() => {
-                // Initialize S3 client from window.AWS_SDK_S3 (CDN loads it as window.S3 usually, or we find it)
-                // The script tag provided imports specific modular clients. We need to check global scope.
-                const checkS3 = () => {
-                    if (window.window && window.window.S3Client) {
-                         initR2();
-                    } else {
-                         // If SDK not ready, retry shorty
-                         setTimeout(checkS3, 500);
-                    }
-                }
-                checkS3();
+                if (initFirebase()) {
+                    window.firebaseApp.onAuthStateChanged(auth, async (u) => {
+                        if (u) {
+                            setUser(u);
+                            setShowLogin(false);
+                            
+                            // Identify Admin
+                            if (u.email === ADMIN_EMAIL) {
+                                setIsAdmin(true);
+                            } else {
+                                setIsAdmin(false);
+                            }
 
+                            // Load Private Portfolio
+                            try {
+                                const docRef = window.firebaseApp.doc(db, 'artifacts', appId, 'users', u.uid, 'data', 'portfolio');
+                                const docSnap = await window.firebaseApp.getDoc(docRef);
+                                if (docSnap.exists()) {
+                                    const data = docSnap.data();
+                                    if(data.items) setPortfolio(data.items);
+                                }
+                            } catch(e) { console.error("Portfolio load error", e); }
+
+                        } else {
+                            setUser(null);
+                            setIsAdmin(false);
+                            setShowLogin(true);
+                            setPortfolio([]); 
+                        }
+                    });
+                }
+                
                 const agreed = localStorage.getItem('proTraderDisclaimerAgreed');
                 if (agreed) setDisclaimerAgreed(true);
                 
-                // Load static market data (Admin would update this file to R2 in real world scenario)
+                // Seed Initial State (Visual only until Firebase syncs)
                 const initStocks = INITIAL_TICKERS.map(sym => {
                     const ath = SEED_ATH[sym] || 100;
-                    const price = ath * (0.85 + Math.random() * 0.1); 
+                    const price = ath * (0.85 + Math.random() * 0.1); // Placeholder noise
                     return processStockData(sym, price, ath); 
                 });
                 setStocks(initStocks);
                 calculateMarketMetrics(initStocks);
             }, []);
 
+            // FIRESTORE LISTENER (Real-time Market Data)
+            useEffect(() => {
+                if (!db) return;
+                // Admin writes here, Everyone reads here
+                // Path Rule: artifacts/{appId}/public/data/market_data/latest
+                const unsub = window.firebaseApp.onSnapshot(
+                    window.firebaseApp.doc(db, 'artifacts', appId, 'public', 'data', 'market_data'),
+                    (docSnap) => {
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            const cloudAthMap = data.athMap || {};
+                            const cloudIndicators = data.indicators || {};
+                            const cloudPrices = data.latestPrices || {};
+                            const cloudUpdate = data.lastUpdated ? new Date(data.lastUpdated) : null;
+
+                            setAthMap(cloudAthMap);
+                            setIndicators(cloudIndicators);
+                            if (cloudUpdate) setLastUpdated(cloudUpdate);
+
+                            // Update stocks with cloud data
+                            setStocks(prev => prev.map(s => {
+                                const newPrice = cloudPrices[s.symbol] || s.price;
+                                const newAth = cloudAthMap[s.symbol] || s.ath;
+                                const stockInd = cloudIndicators[s.symbol] || {};
+                                const sma200 = stockInd.sma200 || 0;
+                                const rsi = stockInd.rsi || 50;
+                                const stats = calculateStatus(newPrice, newAth, vix, rsi, sma200, activeStrategy, s.symbol);
+                                return { ...s, price: newPrice, ath: newAth, discount: newAth - newPrice, indicators: stockInd, stats: stats };
+                            }));
+                        }
+                    },
+                    (error) => console.log("Sync waiting (login required)...")
+                );
+                return () => unsub();
+            }, [db, appId, activeStrategy, vix]); // Re-run if strategy changes
+
             useEffect(() => {
                 setStocks(prev => prev.map(s => processStockData(s.symbol, s.price, s.ath)));
             }, [activeStrategy, indicators, athMap]);
 
-            const handleUserLogin = (userData) => {
-                setUser(userData);
-                if (userData.portfolio) setPortfolio(userData.portfolio);
-                setShowLogin(false);
-            };
-            
             const handleLogout = () => {
-                setUser(null);
-                setPortfolio([]);
-                setShowLogin(true);
+                if (auth) window.firebaseApp.signOut(auth);
             };
 
             const handleAgree = () => {
@@ -567,15 +532,7 @@
                 setDisclaimerAgreed(true);
             };
 
-            const handleConfigSave = () => {
-                if (initR2()) {
-                    setShowConfig(false);
-                    alert("R2 Connected Successfully.");
-                } else {
-                    alert("Config invalid.");
-                }
-            };
-
+            // Data Processing Logic
             const processStockData = (symbol, price, ath) => {
                 const stockInd = indicators[symbol] || {};
                 const sma200 = stockInd.sma200 || 0;
@@ -645,21 +602,127 @@
                 return list;
             }, [strategyConstituents, sortConfig]);
 
-            const saveUserPortfolio = async (newPortfolio) => {
-                 if (!user || !s3Client) return;
-                 const { PutObjectCommand } = window.window;
-                 const userKey = `users/${user.email.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
-                 try {
-                     const userData = { ...user, portfolio: newPortfolio };
-                     const putCmd = new PutObjectCommand({
-                        Bucket: BUCKET_NAME,
-                        Key: userKey,
-                        Body: JSON.stringify(userData),
-                        ContentType: "application/json"
-                     });
-                     await s3Client.send(putCmd);
-                 } catch (e) { console.error("Save failed", e); }
-            }
+            // --- ADMIN ACTIONS ---
+            const fetchLiveData = async () => {
+                if (!isAdmin) return;
+                setLoading(true);
+                const symbols = INITIAL_TICKERS.join(',');
+                try {
+                    const response = await fetch(`https://api.marketstack.com/v2/eod?access_key=${API_KEY}&symbols=${symbols}&limit=100`);
+                    if (!response.ok) throw new Error("Network Error");
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error.message);
+
+                    const updatedAthMap = { ...athMap };
+                    const apiDataMap = {};
+                    const latestPrices = {}; // For DB
+
+                    data.data.forEach(item => {
+                        if (!apiDataMap[item.symbol] || new Date(item.date) > new Date(apiDataMap[item.symbol].date)) {
+                            apiDataMap[item.symbol] = item;
+                        }
+                    });
+
+                    const newStocks = INITIAL_TICKERS.map(sym => {
+                        const apiItem = apiDataMap[sym];
+                        const existingStock = stocks.find(s => s.symbol === sym) || {};
+                        let price = existingStock.price;
+                        let dayHigh = 0;
+                        if (apiItem) { price = apiItem.close; dayHigh = apiItem.high; }
+                        latestPrices[sym] = price;
+                        let ath = updatedAthMap[sym] || SEED_ATH[sym] || price * 1.1;
+                        if (dayHigh && dayHigh > ath) { ath = dayHigh; updatedAthMap[sym] = ath; }
+                        if (price > ath) { ath = price; updatedAthMap[sym] = ath; }
+                        return processStockData(sym, price, ath);
+                    });
+
+                    setAthMap(updatedAthMap);
+                    setStocks(newStocks); 
+                    calculateMarketMetrics(newStocks);
+                    setLastUpdated(new Date());
+                    
+                    // SAVE TO DB (PUBLIC MARKET DATA)
+                    if(db) {
+                         await window.firebaseApp.setDoc(
+                            window.firebaseApp.doc(db, 'artifacts', appId, 'public', 'data', 'market_data'), 
+                            { athMap: updatedAthMap, indicators, latestPrices, lastUpdated: new Date().toISOString() }
+                        );
+                    }
+                } catch (err) { alert(`Error: ${err.message}`); } 
+                finally { setLoading(false); }
+            };
+            
+            const runDeepScan = async () => {
+                if (!isAdmin || isScanning) return;
+                if(!confirm("Start Deep Scan? (~4 API Calls)")) return;
+                setIsScanning(true); setScanProgress(5); 
+                const chunkSize = 3;
+                const chunks = [];
+                for (let i = 0; i < INITIAL_TICKERS.length; i += chunkSize) chunks.push(INITIAL_TICKERS.slice(i, i + chunkSize));
+                const foundHighs = { ...athMap };
+                const newIndicators = { ...indicators };
+                const latestPrices = {};
+
+                try {
+                    for (let i = 0; i < chunks.length; i++) {
+                        const chunkSymbols = chunks[i].join(',');
+                        const url = `https://api.marketstack.com/v2/eod?access_key=${API_KEY}&symbols=${chunkSymbols}&limit=1000`;
+                        const response = await fetch(url);
+                        if (!response.ok) throw new Error("API Error");
+                        const data = await response.json();
+                        if (data.error) throw new Error(data.error.message);
+
+                        if(data.data) {
+                            const symbolData = {};
+                            data.data.forEach(item => {
+                                if(!symbolData[item.symbol]) symbolData[item.symbol] = [];
+                                symbolData[item.symbol].push(item);
+                                if (!foundHighs[item.symbol] || item.high > foundHighs[item.symbol]) foundHighs[item.symbol] = item.high;
+                            });
+
+                            Object.keys(symbolData).forEach(sym => {
+                                const history = symbolData[sym].sort((a,b) => new Date(b.date) - new Date(a.date)); 
+                                if (history.length > 0) latestPrices[sym] = history[0].close;
+                                let sma200 = 0;
+                                if (history.length >= 200) {
+                                    const slice = history.slice(0, 200);
+                                    sma200 = slice.reduce((acc, val) => acc + val.close, 0) / 200;
+                                }
+                                let rvol = 0;
+                                if (history.length >= 31) {
+                                    const avgVol = history.slice(1, 31).reduce((acc, val) => acc + val.volume, 0) / 30;
+                                    rvol = avgVol > 0 ? (history[0].volume / avgVol) : 0;
+                                }
+                                newIndicators[sym] = { sma200, rvol, rsi: 50 }; 
+                            });
+                        }
+                        setScanProgress(Math.round(((i + 1) / chunks.length) * 100));
+                        await new Promise(r => setTimeout(r, 200));
+                    }
+                    setAthMap(foundHighs); setIndicators(newIndicators);
+                    setStocks(prev => {
+                         const updatedList = prev.map(s => {
+                            const newAth = foundHighs[s.symbol] || s.ath;
+                            const newPrice = latestPrices[s.symbol] || s.price; 
+                            const stockInd = newIndicators[s.symbol] || {};
+                            const stats = calculateStatus(newPrice, newAth, vix, 50, stockInd.sma200, activeStrategy, s.symbol);
+                            return { ...s, price: newPrice, ath: newAth, stats, discount: newAth - newPrice };
+                        });
+                        calculateMarketMetrics(updatedList);
+                        return updatedList;
+                    });
+                    
+                    // SAVE TO DB
+                    if(db) {
+                         await window.firebaseApp.setDoc(
+                            window.firebaseApp.doc(db, 'artifacts', appId, 'public', 'data', 'market_data'), 
+                            { athMap: foundHighs, indicators: newIndicators, latestPrices, lastUpdated: new Date().toISOString() }
+                        );
+                    }
+                    alert("Deep Scan Complete. Data pushed to Cloud.");
+                } catch (err) { alert(`Scan interrupted: ${err.message}`); } 
+                finally { setIsScanning(false); setScanProgress(0); }
+            };
 
             const handlePortfolioAdd = async (e) => {
                 e.preventDefault();
@@ -681,28 +744,33 @@
                     newPortfolio.push({ id: Date.now(), symbol: tickerUpper, shares: sharesFloat, avgCost: costFloat });
                 }
                 setPortfolio(newPortfolio);
-                saveUserPortfolio(newPortfolio);
+                
+                // Save to Cloud (Private)
+                if (db && user) {
+                     try {
+                        await window.firebaseApp.setDoc(
+                            window.firebaseApp.doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'portfolio'),
+                            { items: newPortfolio, updatedAt: new Date().toISOString() }
+                        );
+                    } catch (e) { console.error("Error saving portfolio", e); }
+                }
                 setPfTicker(""); setPfShares(""); setPfAvgCost("");
             };
 
             const removePortfolioItem = async (id) => {
                 const newPortfolio = portfolio.filter(p => p.id !== id);
                 setPortfolio(newPortfolio);
-                saveUserPortfolio(newPortfolio);
+                if (db && user) {
+                     try {
+                        await window.firebaseApp.setDoc(
+                            window.firebaseApp.doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'portfolio'),
+                            { items: newPortfolio, updatedAt: new Date().toISOString() }
+                        );
+                    } catch (e) { console.error("Error saving portfolio", e); }
+                }
             };
 
-            const getPortfolioSummary = () => {
-                let totalInvested = 0; let currentValue = 0;
-                portfolio.forEach(item => {
-                    totalInvested += item.shares * item.avgCost;
-                    const stock = stocks.find(s => s.symbol === item.symbol);
-                    const currentPrice = stock ? stock.price : item.avgCost; 
-                    currentValue += item.shares * currentPrice;
-                });
-                return { totalInvested, currentValue, pl: currentValue - totalInvested };
-            };
-            const pfSummary = getPortfolioSummary();
-
+            // UI Elements
             const SortHeader = ({ label, sortKey, currentConfig, onSort }) => (
                 <th className={`px-6 py-4 sortable ${currentConfig.key === sortKey ? 'text-neon-blue' : 'text-slate-400'}`} onClick={() => onSort(sortKey)}>
                     <div className="flex items-center gap-2 text-xs uppercase tracking-wider font-bold">
@@ -726,14 +794,13 @@
             return (
                 <div className="pb-20">
                     {!disclaimerAgreed && <DisclaimerModal onAgree={handleAgree} />}
-                    {showLogin && <LoginModal onLogin={handleUserLogin} onShowConfig={() => setShowConfig(true)} />}
-                    {showConfig && <ConfigModal onClose={() => setShowConfig(false)} onSave={handleConfigSave} />}
+                    {showLogin && <LoginModal onLogin={() => setShowLogin(false)} />}
                     
                     <nav className="glass-header sticky top-0 z-40">
                         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
                             <div className="flex items-center gap-3">
                                 <div className="bg-gradient-to-br from-neon-blue to-blue-600 w-10 h-10 rounded-xl flex items-center justify-center text-black font-bold text-xl shadow-glow"><i className="fa-solid fa-chart-line"></i></div>
-                                <div><h1 className="text-xl font-bold text-white tracking-wide">PRO TRADER <span className="text-neon-blue">ALPHA</span></h1><p className="text-[10px] text-slate-400 uppercase tracking-widest">Client Terminal</p></div>
+                                <div><h1 className="text-xl font-bold text-white tracking-wide">PRO TRADER <span className="text-neon-blue">ALPHA</span></h1><p className="text-[10px] text-slate-400 uppercase tracking-widest">{isAdmin ? "ADMIN CONTROL" : "SUBSCRIBER VIEW"}</p></div>
                             </div>
                             <div className="flex items-center gap-4">
                                 <div className="hidden md:flex items-center gap-4 glass-panel px-4 py-2 rounded-xl">
@@ -741,6 +808,7 @@
                                     <div className="w-px h-8 bg-slate-700"></div>
                                     <div className="flex flex-col items-center px-2"><div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Sentiment</div><div className={`font-bold text-sm ${fearGreed < 40 ? 'text-red-400' : 'text-neon-green'}`}>{fearGreed} <span className="opacity-50 text-[10px]">{fearGreed < 40 ? "FEAR" : "GREED"}</span></div></div>
                                 </div>
+                                {isAdmin && <button onClick={() => fetchLiveData()} disabled={loading || isScanning} className={`btn-action bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg flex items-center gap-2 text-sm border border-white/10 ${loading ? 'opacity-50' : ''}`}>{loading ? <div className="loader"></div> : <i className="fa-solid fa-rotate"></i>} LIVE DATA</button>}
                                 {!showLogin && <button onClick={handleLogout} className="text-slate-400 hover:text-white text-xs uppercase font-bold px-3">Logout</button>}
                             </div>
                         </div>
@@ -750,6 +818,7 @@
                         <div className="flex flex-col gap-6">
                             <div className="flex flex-col md:flex-row justify-between items-end gap-4">
                                 <div><h2 className="text-2xl font-bold text-white flex items-center gap-2"><i className="fa-solid fa-layer-group text-slate-500"></i> Market Scanner</h2><p className="text-sm text-slate-400 mt-1">Viewing Top {activeStrategy === 'ultimate_alpha' ? '5' : '10'} • {activeStrategy.replace('_', ' ').toUpperCase()} Strategy</p></div>
+                                {isAdmin && <div className="flex flex-wrap gap-2 justify-end"><button onClick={runDeepScan} disabled={isScanning} className="btn-strategy px-4 py-2.5 rounded-lg flex items-center gap-2 font-bold text-sm bg-slate-800 text-slate-300 border border-slate-700 hover:border-neon-blue hover:text-white">{isScanning ? <><span className="animate-spin">⟳</span> {scanProgress}%</> : <><i className="fa-solid fa-radar"></i> Deep Scan</>}</button></div>}
                             </div>
                             <div className="flex flex-wrap gap-2 p-1 bg-slate-900/50 rounded-xl border border-slate-800 w-fit">
                                 <StrategyButton id="ultimate_alpha" label="Ultimate Alpha" icon="fa-trophy" isGold={true} />
@@ -760,6 +829,8 @@
                                 <StrategyButton id="deep_value" label="Deep Value" icon="fa-tags" />
                             </div>
                         </div>
+
+                        {isScanning && <div className="w-full bg-slate-800 rounded-full h-1 mt-[-20px] mb-4 overflow-hidden relative"><div className="absolute top-0 left-0 h-full bg-neon-blue shadow-[0_0_15px_#00f3ff] progress-bar" style={{ width: `${scanProgress}%` }}></div></div>}
 
                         <div className="glass-panel rounded-2xl overflow-hidden">
                             <div className="overflow-x-auto">
@@ -808,11 +879,8 @@
                                 <form onSubmit={handlePortfolioAdd} className="space-y-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
                                     <div>
                                         <label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Ticker</label>
-                                        <input list="ticker-list" type="text" required value={pfTicker} onChange={e => setPfTicker(e.target.value)} 
-                                            className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white focus:border-neon-blue focus:outline-none transition-colors mt-1" placeholder="e.g. AAPL" />
-                                        <datalist id="ticker-list">
-                                            {INITIAL_TICKERS.map(t => <option key={t} value={t} />)}
-                                        </datalist>
+                                        <input list="ticker-list" type="text" required value={pfTicker} onChange={e => setPfTicker(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white focus:border-neon-blue focus:outline-none transition-colors mt-1" placeholder="e.g. AAPL" />
+                                        <datalist id="ticker-list">{INITIAL_TICKERS.map(t => <option key={t} value={t} />)}</datalist>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div><label className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Shares</label><input type="number" step="any" required value={pfShares} onChange={e => setPfShares(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg p-2.5 text-white focus:border-neon-blue focus:outline-none mt-1" placeholder="0.00" /></div>
@@ -832,7 +900,6 @@
                                                     const currentPrice = stock ? stock.price : item.avgCost; 
                                                     const pl = (currentPrice - item.avgCost) * item.shares;
                                                     const plPct = item.avgCost > 0 ? (pl / (item.shares * item.avgCost)) * 100 : 0;
-                                                    
                                                     return (
                                                         <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
                                                             <td className="px-4 py-3 font-bold text-white flex items-center gap-2"><StockLogo symbol={item.symbol} /> {item.symbol}</td>
@@ -858,10 +925,10 @@
                         </div>
                     </main>
 
-                    {selectedStock && <ChartView stock={selectedStock} onClose={() => setSelectedStock(null)} />}
+                    {selectedStock && <ChartView stock={selectedStock} historyData={[]} onClose={() => setSelectedStock(null)} />}
                     
                     <footer className="fixed bottom-0 w-full bg-[#020617] border-t border-slate-800 p-2 text-center text-[10px] text-slate-600 z-50">
-                        Pro Trader Alpha v2.0 • View Only Mode • Not Financial Advice
+                        Pro Trader Alpha v2.0 • Data provided by Marketstack • 15 Minute Delayed / EOD • Not Financial Advice
                     </footer>
                 </div>
             );
